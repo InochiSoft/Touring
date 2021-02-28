@@ -57,7 +57,7 @@ class CreateGroupPageState extends State<CreateGroupPage> {
   @override
   void initState() {
     super.initState();
-    _currLatLng = LatLng(-6.9971703, 107.5439868);
+    _currLatLng = LatLng(0, 0);
     _destLatLng = _currLatLng;
     _getCurrentLocation();
     _queryUser = FirebaseFirestore.instance.collection('users');
@@ -80,6 +80,10 @@ class CreateGroupPageState extends State<CreateGroupPage> {
       _currPosition = position;
       _currLatLng = LatLng(_currPosition.latitude, _currPosition.longitude);
     });
+    _updateMarker();
+    if (_googleMapController != null){
+      await _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
+    }
   }
 
   void _initMenu() {
@@ -123,10 +127,10 @@ class CreateGroupPageState extends State<CreateGroupPage> {
     _actionList.clear();
     _actionList = [
       IconButton(
-        icon: Icon(Icons.logout),
-        tooltip: 'Keluar',
+        icon: Icon(Icons.refresh),
+        tooltip: 'Segarkan',
         onPressed: () {
-
+          _getCurrentLocation();
         },
       ),
     ];
@@ -156,6 +160,22 @@ class CreateGroupPageState extends State<CreateGroupPage> {
 
     print(latLng.latitude);
     print(latLng.longitude);
+  }
+
+  void _updateMarker(){
+    setState(() {
+      var id = 'YourLocation';
+      _markers.clear();
+      _currMarker = Marker(
+        markerId: MarkerId(id),
+        position: _currLatLng,
+        infoWindow: InfoWindow(
+          title: 'Lokasi Anda',
+          snippet: 'Posisi lokasi Anda saat ini',
+        ),
+      );
+      _markers[MarkerId(id)] = _currMarker;
+    });
   }
 
   Future<void> _createGroup() async {
@@ -228,33 +248,8 @@ class CreateGroupPageState extends State<CreateGroupPage> {
   }
 
   Future<void> _initMap(GoogleMapController controller) async {
-    setState(() {
-      var id = 'YourLocation';
-      _googleMapController = controller;
-      _markers.clear();
-      _currMarker = Marker(
-        markerId: MarkerId(id),
-        position: _currLatLng,
-        infoWindow: InfoWindow(
-          title: 'Lokasi Anda',
-          snippet: 'Posisi lokasi Anda saat ini',
-        ),
-      );
-      _markers[MarkerId(id)] = _currMarker;
-      /*
-      for (final office in googleOffices.offices) {
-        final marker = Marker(
-          markerId: MarkerId(office.name),
-          position: LatLng(office.lat, office.lng),
-          infoWindow: InfoWindow(
-            title: office.name,
-            snippet: office.address,
-          ),
-        );
-        _markers[office.name] = marker;
-      }
-      */
-    });
+    _googleMapController = controller;
+    _updateMarker();
   }
 
   @override
@@ -299,6 +294,7 @@ class CreateGroupPageState extends State<CreateGroupPage> {
       ),
       floating: true,
       pinned: true,
+      actions: _actionList,
     );
 
     Widget _map = SliverToBoxAdapter(

@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -16,6 +17,8 @@ import 'package:touring/model/vo/member.dart';
 import 'package:touring/model/vo/menu.dart';
 import 'package:touring/model/vo/position.dart';
 import 'package:touring/model/vo/user.dart';
+import 'dart:io';
+//import 'dart:html' show Platform;
 
 class LiveGroupPage extends StatefulWidget {
   final GroupVO group;
@@ -59,12 +62,25 @@ class LiveGroupPageState extends State<LiveGroupPage> {
 
   double _lastLatitude = 0.0000000;
   double _lastLongitude = 0.0000000;
+  double _minDistance = 1000000000.0;
+
+  dynamic languages;
+  String language;
+  double volume = 0.5;
+  double pitch = 1.0;
+  double rate = 0.9;
+  bool isCurrentLanguageInstalled = false;
+
+  String _newVoiceText;
+
+  FlutterTts flutterTts;
 
   @override
   void initState() {
     super.initState();
+    initTts();
     _group = widget.group;
-    _currLatLng = LatLng(-6.9971703, 107.5439868);
+    _currLatLng = LatLng(0, 0);
     _destLatLng = _currLatLng;
     _queryUser = FirebaseFirestore.instance.collection('users');
     _queryGroup = FirebaseFirestore.instance.collection('groups');
@@ -76,6 +92,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   @override
   void dispose() {
     super.dispose();
+    flutterTts.stop();
   }
 
   void _getUser() async {
@@ -103,7 +120,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     _selectedMember = _members['0'];
   }
 
-  void _setUserMember(){
+  void _setUserMember() async {
     _members[_userId] = MemberVO();
     _members[_userId].id = _userId;
     _members[_userId].name = _userName;
@@ -112,7 +129,6 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     _members[_userId].speed = 0.0;
 
     _selectedMember = _members[_userId];
-
   }
 
   void _initMenu() {
@@ -166,9 +182,6 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   }
 
   Future<void> _initMap(GoogleMapController controller) async {
-    final icon = await BitmapDescriptor.fromAssetImage(
-        ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/green_bike.png');
-
     _googleMapController = controller;
     _markers.clear();
     _members.clear();
@@ -176,20 +189,6 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     _setUserMember();
 
     setState(() {
-      _currMarker = Marker(
-        icon: icon,
-        markerId: MarkerId(_userId),
-        position: _currLatLng,
-        infoWindow: InfoWindow(
-          title: 'Anda',
-        ),
-        onTap: (){
-          setState(() {
-            _selectedMember = _members[_userId];
-          });
-        },
-      );
-
       if (_group != null){
         var destLatitude = _group.latitude;
         var destLongitude = _group.longitude;
@@ -208,23 +207,68 @@ class LiveGroupPageState extends State<LiveGroupPage> {
 
         _markers[MarkerId(_group.code)] = _destMarker;
       }
-
-      _markers[MarkerId(_userId)] = _currMarker;
     });
+  }
+
+  void _getCurrentLocation() async {
+    await _queryLives.doc(_group.code).collection('members').doc(_userId).delete();
+    var position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    var time = DateTime.now().millisecondsSinceEpoch;
+    var data = {
+      'created' : time,
+      'latitude' : position.latitude,
+      'longitude' : position.longitude,
+    };
+
+    if (position.latitude != _lastLatitude){
+      if (position.longitude != _lastLongitude){
+        await _queryLives.doc(_group.code).collection('members')
+            .doc(_userId).collection('positions')
+            .doc('first').set(data);
+
+        await _queryLives.doc(_group.code).collection('members')
+            .doc(_userId).collection('positions')
+            .doc('last').set(data);
+
+        setState(() {
+          _currLatLng = LatLng(position.latitude, position.longitude);
+          _lastLatitude = position.latitude;
+          _lastLongitude = position.longitude;
+
+          _updateMarker();
+          _updateLocation();
+        });
+      }
+    }
+  }
+
+  void _updateMarker() async {
+    final icon = await BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/green_bike.png');
+
+    final iconMember = await BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/black_bike.png');
+
+    _currMarker = Marker(
+      icon: icon,
+      markerId: MarkerId(_userId),
+      position: _currLatLng,
+      infoWindow: InfoWindow(
+        title: 'Anda',
+      ),
+      onTap: (){
+        setState(() {
+          _selectedMember = _members[_userId];
+        });
+      },
+    );
+
+    _markers[MarkerId(_userId)] = _currMarker;
 
     if (_group != null){
-      final iconMember = await BitmapDescriptor.fromAssetImage(
-          ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/black_bike.png');
-
-      _queryLives.doc(_group.code).collection('members')
-          .doc(_userId).collection('positions')
-          .doc('last').snapshots().listen((element) {
-        var position = PositionVO.fromJson(element.data());
-        _currLatLng = LatLng(position.latitude, position.longitude);
-        _lastLatitude = position.latitude;
-        _lastLongitude = position.longitude;
-      });
-
       _queryGroup.doc(_group.code).collection('members').snapshots().listen((_snapshotGroup) {
         for (var i = 0; i < _snapshotGroup.docs.length; i++){
           var element = _snapshotGroup.docs[i];
@@ -289,7 +333,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
                       markerId: MarkerId(memberId),
                       position: memberLatLng,
                       infoWindow: InfoWindow(
-                          title: '${userMember.name}',
+                        title: '${userMember.name}',
                       ),
                       onTap: (){
                         setState(() {
@@ -301,6 +345,32 @@ class LiveGroupPageState extends State<LiveGroupPage> {
                     setState(() {
                       _markers[MarkerId(memberId)] = memberMarker;
                       _members[memberId] = member;
+
+                      _members.forEach((key, value) {
+                        if (value.id != _userId){
+                          if (value.distanceMember > 0){
+                            if (_minDistance > value.distanceMember){
+                              _minDistance = value.distanceMember;
+                            }
+                            print(_minDistance);
+                          }
+                        }
+                      });
+                      if (_minDistance < 1000000000.0){
+                        if (_members[_userId].speed.ceil() <= 80 && _members[_userId].speed.ceil() > 40){
+                          if (_minDistance.ceil() >= 3000){
+                            _newVoiceText = 'Anda tertinggal sejauh ${_minDistance.ceil()} meter. '
+                                'Kecepatan Anda ${_members[_userId].speed.ceil()} Kilometer per Jam';
+                            _speak(_newVoiceText);
+                          }
+                        } else if (_members[_userId].speed.ceil() <= 40) {
+                          if (_minDistance.ceil() >= 500){
+                            _newVoiceText = 'Anda tertinggal sejauh ${_minDistance.ceil()} meter. '
+                                'Kecepatan Anda ${_members[_userId].speed.ceil()} Kilometer per Jam';
+                            _speak(_newVoiceText);
+                          }
+                        }
+                      }
                     });
                   });
                 });
@@ -310,37 +380,8 @@ class LiveGroupPageState extends State<LiveGroupPage> {
         }
       });
     }
-  }
 
-  void _getCurrentLocation() async {
-    await _queryLives.doc(_group.code).collection('members').doc(_userId).delete();
-    var position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-
-    var time = DateTime.now().millisecondsSinceEpoch;
-    var data = {
-      'created' : time,
-      'latitude' : position.latitude,
-      'longitude' : position.longitude,
-    };
-
-    if (_lastLatitude.toStringAsFixed(7) != position.latitude.toStringAsFixed(7)) {
-      if (_lastLongitude.toStringAsFixed(7) !=
-          position.longitude.toStringAsFixed(7)) {
-        await _queryLives.doc(_group.code).collection('members')
-            .doc(_userId).collection('positions')
-            .doc('first').set(data);
-
-        setState(() {
-          _currLatLng = LatLng(position.latitude, position.longitude);
-          _lastLatitude = position.latitude;
-          _lastLongitude = position.longitude;
-        });
-      }
-    }
-    _updateLocation();
-    _updateSpeed();
+    await _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
   }
 
   void _updateLocation(){
@@ -349,17 +390,53 @@ class LiveGroupPageState extends State<LiveGroupPage> {
       distanceFilter: 25,
     ).listen((Position position){
       var time = DateTime.now().millisecondsSinceEpoch;
-      var data = {
-        'created' : time,
-        'latitude' : position.latitude,
-        'longitude' : position.longitude,
-      };
+
+      PositionVO firstPosition;
+      var lastPosition = PositionVO();
+
+      lastPosition.created = time.toString();
+      lastPosition.latitude = position.latitude;
+      lastPosition.longitude = position.longitude;
 
       if (_lastLatitude.toStringAsFixed(7) != position.latitude.toStringAsFixed(7)){
         if (_lastLongitude.toStringAsFixed(7) != position.longitude.toStringAsFixed(7)){
           _queryLives.doc(_group.code).collection('members')
               .doc(_userId).collection('positions')
-              .doc('last').set(data).then((value) {
+              .doc('first').get().then((value){
+            if (value.exists){
+              firstPosition = PositionVO.fromJson(value.data());
+              var firstCreated = int.parse(firstPosition.created);
+              var lastCreated = int.parse(lastPosition.created);
+              var balanceMilli = (lastCreated - firstCreated);
+              var balance = balanceMilli / 1000;
+
+              var firstLat = firstPosition.latitude;
+              var firstLon = firstPosition.longitude;
+
+              var lastLat = lastPosition.latitude;
+              var lastLon = lastPosition.longitude;
+
+              var distanceDest = Geolocator.distanceBetween(
+                  _destLatLng.latitude, _destLatLng.longitude, lastPosition.latitude, lastPosition.longitude);
+
+              var distanceMeter = Geolocator.distanceBetween(firstLat, firstLon, lastLat, lastLon);
+              if (distanceMeter > 0){
+                if (balance > 0){
+                  var time = balance / 3600.0;
+                  var distanceKM = distanceMeter / 1000.0;
+                  setState(() {
+                    _members[_userId].distanceMember = 0.0;
+                    _members[_userId].distanceDestination = distanceDest;
+                    _members[_userId].speed = distanceKM / time;
+                  });
+                }
+              }
+            }
+          });
+
+          _queryLives.doc(_group.code).collection('members')
+              .doc(_userId).collection('positions')
+              .doc('last').set(lastPosition.toJson()).then((value) {
 
             _queryLives.doc(_group.code).collection('members')
                 .doc(_userId).collection('records').get().then((value){
@@ -368,100 +445,107 @@ class LiveGroupPageState extends State<LiveGroupPage> {
 
               _queryLives.doc(_group.code).collection('members')
                   .doc(_userId).collection('records')
-                  .doc(num..padLeft(9, '0'))
-                  .set(data);
+                  .doc(num.padLeft(9, '0'))
+                  .set(lastPosition.toJson());
             });
 
             setState(() {
               _lastLatitude = position.latitude;
               _lastLongitude = position.longitude;
-
               _currLatLng = LatLng(position.latitude, position.longitude);
-              //_updateLines();
+
+              _updateMarker();
             });
           });
         }
       }
     });
+  }
 
-    /*
-    if (_positionStream != null){
-      _positionStream.cancel();
+  Future _getLanguages() async {
+    languages = await flutterTts.getLanguages;
+    if (languages != null) setState(() => languages);
+  }
+
+  Future _getEngines() async {
+    var engines = await flutterTts.getEngines;
+    if (engines != null) {
+      for (dynamic engine in engines) {
+        print(engine);
+      }
     }
-    */
   }
 
-  void _updateLines(){
-    _queryLives.doc(_group.code).collection('members')
-        .doc(_userId).collection('records')
-        .snapshots()
-        .listen((_snapshotPos) {
-          var size = _snapshotPos.docs.length;
-          for (var i = 0; i < size; i++){
-            var element = _snapshotPos.docs[i];
-            var position = PositionVO.fromJson(element.data());
-            var memberLatLng = LatLng(position.latitude, position.longitude);
-            _positions[element.id] = memberLatLng;
-          }
-          setState(() {
-            _polylines.clear();
-            _polylines.add(Polyline(
-              polylineId: PolylineId(_userId),
-              visible: true,
-              points: _positions.values.toList(),
-              width: 4,
-              color: Colors.blue,
-            ));
-          });
+  Future _speak(_newVoiceText) async {
+    await flutterTts.setVolume(volume);
+    await flutterTts.setSpeechRate(rate);
+    await flutterTts.setPitch(pitch);
+
+    if (_newVoiceText != null) {
+      if (_newVoiceText.isNotEmpty) {
+        await flutterTts.awaitSpeakCompletion(true);
+        await flutterTts.speak(_newVoiceText);
+      }
+    }
+  }
+
+  Future _stop() async {
+    var result = await flutterTts.stop();
+  }
+
+  Future _pause() async {
+    var result = await flutterTts.pause();
+  }
+
+  void initTts() {
+    flutterTts = FlutterTts();
+
+    _getLanguages();
+
+    //if (isAndroid) {
+      _getEngines();
+    //}
+
+    flutterTts.setStartHandler(() {
+      setState(() {
+        print("Playing");
+      });
     });
-  }
 
-  void _updateSpeed(){
-    PositionVO firstPosition;
-    PositionVO lastPosition;
+    flutterTts.setCompletionHandler(() {
+      setState(() {
+        print("Complete");
+      });
+    });
 
-    _queryLives.doc(_group.code).collection('members')
-        .doc(_userId).collection('positions')
-        .doc('first').get().then((value){
-          if (value.exists){
-            firstPosition = PositionVO.fromJson(value.data());
-            _queryLives.doc(_group.code).collection('members')
-                .doc(_userId).collection('positions')
-                .doc('last').get().then((value){
-              if (value.exists){
-                lastPosition = PositionVO.fromJson(value.data());
+    flutterTts.setCancelHandler(() {
+      setState(() {
+        print("Cancel");
+      });
+    });
+/*
 
-                var firstCreated = int.parse(firstPosition.created);
-                var lastCreated = int.parse(lastPosition.created);
-                var balanceMilli = (lastCreated - firstCreated);
-                var balance = balanceMilli / 1000;
+    if (isWeb || isIOS) {
+      flutterTts.setPauseHandler(() {
+        setState(() {
+          print("Paused");
+          ttsState = TtsState.paused;
+        });
+      });
 
-                var firstLat = firstPosition.latitude;
-                var firstLon = firstPosition.longitude;
+      flutterTts.setContinueHandler(() {
+        setState(() {
+          print("Continued");
+          ttsState = TtsState.continued;
+        });
+      });
+    }
+*/
 
-                var lastLat = lastPosition.latitude;
-                var lastLon = lastPosition.longitude;
-
-                var distanceDest = Geolocator.distanceBetween(
-                    _destLatLng.latitude, _destLatLng.longitude, lastPosition.latitude, lastPosition.longitude);
-
-                var distanceMeter = Geolocator.distanceBetween(firstLat, firstLon, lastLat, lastLon);
-                if (distanceMeter > 0){
-                  if (balance > 0){
-                    var time = balance / 3600.0;
-                    var distanceKM = distanceMeter / 1000.0;
-                    setState(() {
-                      _speed = distanceKM / time;
-                    });
-                  }
-                }
-                _members[_userId].distanceMember = 0.0;
-                _members[_userId].distanceDestination = distanceDest;
-                _members[_userId].speed = _speed;
-                //var speed =
-              }
-            });
-          }
+    flutterTts.setErrorHandler((msg) {
+      setState(() {
+        print('error: $msg');
+      });
     });
   }
 
@@ -518,7 +602,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Expanded(
-              child: GoogleMap(
+              child: GoogleMap( 
                 onMapCreated: _initMap,
                 compassEnabled: true,
                 rotateGesturesEnabled: true,

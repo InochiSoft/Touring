@@ -47,6 +47,7 @@ dependencies:
   toast:
   clipboard:
   share:
+  flutter_tts:
 
 dev_dependencies:
   flutter_test:
