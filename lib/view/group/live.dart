@@ -211,6 +211,9 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   }
 
   void _getCurrentLocation() async {
+    final icon = await BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/green_bike.png');
+
     await _queryLives.doc(_group.code).collection('members').doc(_userId).delete();
     var position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
@@ -225,6 +228,15 @@ class LiveGroupPageState extends State<LiveGroupPage> {
 
     if (position.latitude != _lastLatitude){
       if (position.longitude != _lastLongitude){
+        print(position.latitude);
+        print(_lastLatitude);
+
+        setState(() {
+          _currLatLng = LatLng(position.latitude, position.longitude);
+          _lastLatitude = position.latitude;
+          _lastLongitude = position.longitude;
+        });
+
         await _queryLives.doc(_group.code).collection('members')
             .doc(_userId).collection('positions')
             .doc('first').set(data);
@@ -234,39 +246,99 @@ class LiveGroupPageState extends State<LiveGroupPage> {
             .doc('last').set(data);
 
         setState(() {
-          _currLatLng = LatLng(position.latitude, position.longitude);
-          _lastLatitude = position.latitude;
-          _lastLongitude = position.longitude;
+          _currMarker = Marker(
+            icon: icon,
+            markerId: MarkerId(_userId),
+            position: _currLatLng,
+            infoWindow: InfoWindow(
+              title: 'Anda',
+            ),
+            onTap: (){
+              setState(() {
+                _selectedMember = _members[_userId];
+              });
+            },
+          );
 
-          _updateMarker();
-          _updateLocation();
+          _markers[MarkerId(_userId)] = _currMarker;
+          _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
         });
+
+        _updateLocation();
+        _updatePositions();
       }
     }
   }
 
-  void _updateMarker() async {
+  void _updateLocation() async {
     final icon = await BitmapDescriptor.fromAssetImage(
         ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/green_bike.png');
 
+    _positionStream = Geolocator.getPositionStream(
+      desiredAccuracy: LocationAccuracy.high,
+      distanceFilter: 25,
+    ).listen((Position position){
+      var time = DateTime.now().millisecondsSinceEpoch;
+      var lastPosition = PositionVO();
+
+      lastPosition.created = time.toString();
+      lastPosition.latitude = position.latitude;
+      lastPosition.longitude = position.longitude;
+
+      if (_lastLatitude.toStringAsFixed(7) != position.latitude.toStringAsFixed(7)){
+        if (_lastLongitude.toStringAsFixed(7) != position.longitude.toStringAsFixed(7)){
+
+          setState(() {
+            _lastLatitude = position.latitude;
+            _lastLongitude = position.longitude;
+            _currLatLng = LatLng(position.latitude, position.longitude);
+          });
+
+          _queryLives.doc(_group.code).collection('members')
+              .doc(_userId).collection('positions')
+              .doc('last').set(lastPosition.toJson()).then((value) {
+
+            _queryLives.doc(_group.code).collection('members')
+                .doc(_userId).collection('records').get().then((value){
+              var size = value.size;
+              var num = size.toString();
+
+              _queryLives.doc(_group.code).collection('members')
+                  .doc(_userId).collection('records')
+                  .doc(num.padLeft(9, '0'))
+                  .set(lastPosition.toJson());
+            });
+
+            setState(() {
+              _currMarker = Marker(
+                icon: icon,
+                markerId: MarkerId(_userId),
+                position: _currLatLng,
+                infoWindow: InfoWindow(
+                  title: 'Anda',
+                ),
+                onTap: (){
+                  setState(() {
+                    _selectedMember = _members[_userId];
+                  });
+                },
+              );
+
+              _markers[MarkerId(_userId)] = _currMarker;
+              _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
+            });
+
+            _updatePositions();
+          });
+        }
+      }
+
+    });
+  }
+
+  void _updatePositions() async {
     final iconMember = await BitmapDescriptor.fromAssetImage(
         ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/black_bike.png');
-
-    _currMarker = Marker(
-      icon: icon,
-      markerId: MarkerId(_userId),
-      position: _currLatLng,
-      infoWindow: InfoWindow(
-        title: 'Anda',
-      ),
-      onTap: (){
-        setState(() {
-          _selectedMember = _members[_userId];
-        });
-      },
-    );
-
-    _markers[MarkerId(_userId)] = _currMarker;
 
     if (_group != null){
       _queryGroup.doc(_group.code).collection('members').snapshots().listen((_snapshotGroup) {
@@ -356,18 +428,54 @@ class LiveGroupPageState extends State<LiveGroupPage> {
                           }
                         }
                       });
-                      if (_minDistance < 1000000000.0){
-                        if (_members[_userId].speed.ceil() <= 80 && _members[_userId].speed.ceil() > 40){
-                          if (_minDistance.ceil() >= 3000){
-                            _newVoiceText = 'Anda tertinggal sejauh ${_minDistance.ceil()} meter. '
-                                'Kecepatan Anda ${_members[_userId].speed.ceil()} Kilometer per Jam';
-                            _speak(_newVoiceText);
-                          }
-                        } else if (_members[_userId].speed.ceil() <= 40) {
-                          if (_minDistance.ceil() >= 500){
-                            _newVoiceText = 'Anda tertinggal sejauh ${_minDistance.ceil()} meter. '
-                                'Kecepatan Anda ${_members[_userId].speed.ceil()} Kilometer per Jam';
-                            _speak(_newVoiceText);
+                    });
+
+                    _queryLives.doc(_group.code).collection('members')
+                        .doc(_userId).collection('positions')
+                        .doc('first').get().then((value){
+                      if (value.exists){
+                        firstPosition = PositionVO.fromJson(value.data());
+                        var firstCreated = int.parse(firstPosition.created);
+                        var lastCreated = int.parse(lastPosition.created);
+                        var balanceMilli = (lastCreated - firstCreated);
+                        var balance = balanceMilli / 1000;
+
+                        var firstLat = firstPosition.latitude;
+                        var firstLon = firstPosition.longitude;
+
+                        var lastLat = lastPosition.latitude;
+                        var lastLon = lastPosition.longitude;
+
+                        var distanceDest = Geolocator.distanceBetween(
+                            _destLatLng.latitude, _destLatLng.longitude, lastPosition.latitude, lastPosition.longitude);
+
+                        var distanceMeter = Geolocator.distanceBetween(firstLat, firstLon, lastLat, lastLon);
+                        if (distanceMeter > 0){
+                          if (balance > 0){
+                            var time = balance / 3600.0;
+                            var distanceKM = distanceMeter / 1000.0;
+                            setState(() {
+                              _members[_userId].distanceMember = 0.0;
+                              _members[_userId].distanceDestination = distanceDest;
+                              _members[_userId].speed = distanceKM / time;
+                              _speed = distanceKM / time;
+                            });
+
+                            if (_minDistance < 1000000000.0){
+                              if (_speed.ceil() <= 80 && _speed.ceil() > 40){
+                                if (_minDistance.ceil() >= 3000){
+                                  _newVoiceText = 'Anda tertinggal sejauh ${_minDistance.ceil()} meter. '
+                                      'Kecepatan Anda ${_speed.ceil()} Kilometer per Jam';
+                                  _speak(_newVoiceText);
+                                }
+                              } else if (_speed.ceil() <= 40) {
+                                if (_minDistance.ceil() >= 500){
+                                  _newVoiceText = 'Anda tertinggal sejauh ${_minDistance.ceil()} meter. '
+                                      'Kecepatan Anda ${_speed.ceil()} Kilometer per Jam';
+                                  _speak(_newVoiceText);
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -380,86 +488,6 @@ class LiveGroupPageState extends State<LiveGroupPage> {
         }
       });
     }
-
-    await _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
-  }
-
-  void _updateLocation(){
-    _positionStream = Geolocator.getPositionStream(
-      desiredAccuracy: LocationAccuracy.high,
-      distanceFilter: 25,
-    ).listen((Position position){
-      var time = DateTime.now().millisecondsSinceEpoch;
-
-      PositionVO firstPosition;
-      var lastPosition = PositionVO();
-
-      lastPosition.created = time.toString();
-      lastPosition.latitude = position.latitude;
-      lastPosition.longitude = position.longitude;
-
-      if (_lastLatitude.toStringAsFixed(7) != position.latitude.toStringAsFixed(7)){
-        if (_lastLongitude.toStringAsFixed(7) != position.longitude.toStringAsFixed(7)){
-          _queryLives.doc(_group.code).collection('members')
-              .doc(_userId).collection('positions')
-              .doc('first').get().then((value){
-            if (value.exists){
-              firstPosition = PositionVO.fromJson(value.data());
-              var firstCreated = int.parse(firstPosition.created);
-              var lastCreated = int.parse(lastPosition.created);
-              var balanceMilli = (lastCreated - firstCreated);
-              var balance = balanceMilli / 1000;
-
-              var firstLat = firstPosition.latitude;
-              var firstLon = firstPosition.longitude;
-
-              var lastLat = lastPosition.latitude;
-              var lastLon = lastPosition.longitude;
-
-              var distanceDest = Geolocator.distanceBetween(
-                  _destLatLng.latitude, _destLatLng.longitude, lastPosition.latitude, lastPosition.longitude);
-
-              var distanceMeter = Geolocator.distanceBetween(firstLat, firstLon, lastLat, lastLon);
-              if (distanceMeter > 0){
-                if (balance > 0){
-                  var time = balance / 3600.0;
-                  var distanceKM = distanceMeter / 1000.0;
-                  setState(() {
-                    _members[_userId].distanceMember = 0.0;
-                    _members[_userId].distanceDestination = distanceDest;
-                    _members[_userId].speed = distanceKM / time;
-                  });
-                }
-              }
-            }
-          });
-
-          _queryLives.doc(_group.code).collection('members')
-              .doc(_userId).collection('positions')
-              .doc('last').set(lastPosition.toJson()).then((value) {
-
-            _queryLives.doc(_group.code).collection('members')
-                .doc(_userId).collection('records').get().then((value){
-              var size = value.size;
-              var num = size.toString();
-
-              _queryLives.doc(_group.code).collection('members')
-                  .doc(_userId).collection('records')
-                  .doc(num.padLeft(9, '0'))
-                  .set(lastPosition.toJson());
-            });
-
-            setState(() {
-              _lastLatitude = position.latitude;
-              _lastLongitude = position.longitude;
-              _currLatLng = LatLng(position.latitude, position.longitude);
-
-              _updateMarker();
-            });
-          });
-        }
-      }
-    });
   }
 
   Future _getLanguages() async {

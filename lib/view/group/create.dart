@@ -175,6 +175,10 @@ class CreateGroupPageState extends State<CreateGroupPage> {
         ),
       );
       _markers[MarkerId(id)] = _currMarker;
+
+      if (_googleMapController != null){
+        _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
+      }
     });
   }
 
@@ -221,8 +225,12 @@ class CreateGroupPageState extends State<CreateGroupPage> {
                   groupVO.name = _textNameController.text;
                   groupVO.location = _textLocationController.text;
 
-                  _queryGroup.add(groupVO.toJson()).then((value) {
-                    var id = value.id;
+                  print(groupVO.code);
+                  print(groupVO.id);
+                  print(groupVO.toJson());
+
+                  _queryGroup.add(groupVO.toJson()).then((result) {
+                    var id = result.id;
                     _queryMembers = _queryGroup.doc(id).collection('members');
                     _queryMembers.doc(_userLogin.uid).set({
                       'id' : _userLogin.uid,
@@ -230,12 +238,12 @@ class CreateGroupPageState extends State<CreateGroupPage> {
                       'longitude' : _currLatLng.longitude,
                     });
                     _queryUser.doc(_userLogin.uid).collection('groups').doc(id).set({'id': id});
-                    _isRefresh = true;
                     Toast.show('Grup ${groupVO.name} berhasil dibuat',
-                      context,
+                      this.context,
                       duration: Toast.LENGTH_LONG,
                       gravity: Toast.BOTTOM,
                     );
+                    _isRefresh = true;
                   });
                   Navigator.pop(context);
                 }
