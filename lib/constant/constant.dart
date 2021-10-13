@@ -6,7 +6,7 @@ const String kLoginInstruction = 'Silakan masuk dengan akun Google Anda untuk me
 const String kHomeInstruction = 'Klik menu yang tersedia di bawah ini';
 const int kServerTimeout = 40;
 const double kItemSpace = 10.0;
-const int kTimeInterval = 1000 * 60 * 3;
+const int kTimeInterval = 1000 * 10;
 
 const String kSharedUser = 'Shared User';
 const String kKeyUser = 'user';
