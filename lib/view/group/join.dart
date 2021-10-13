@@ -8,16 +8,15 @@ import 'package:flutter_svg/svg.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:touring/constant/color.dart';
 import 'package:touring/constant/constant.dart';
 import 'package:touring/helper/clipper.dart';
 import 'package:touring/layout/layout.dart';
 import 'package:touring/layout/model/vo/screen.dart';
 import 'package:touring/model/config/user.dart';
 import 'package:touring/model/vo/group.dart';
-import 'package:touring/model/vo/menu.dart';
+import 'package:touring/model/vo/member.dart';
 import 'package:touring/model/vo/user.dart';
-import 'package:touring/view/login/login.dart';
-import 'package:touring/model/vo/locations.dart' as locations;
 
 class JoinGroupPage extends StatefulWidget {
   JoinGroupPage({Key key}) : super(key: key);
@@ -37,16 +36,11 @@ class JoinGroupPageState extends State<JoinGroupPage> {
   Position _currPosition;
   LatLng _currLatLng;
 
-  final List<MenuVO> _menuIndexes = [];
-  List<Widget> _actionList = [];
-
   UserVO _userLogin;
-  String _userName = '';
   String _userId = '';
 
   CollectionReference _queryUser;
   CollectionReference _queryGroup;
-  CollectionReference _queryMembers;
 
   GroupVO _resultGroup;
 
@@ -70,7 +64,6 @@ class JoinGroupPageState extends State<JoinGroupPage> {
     _userLogin = await _userCfg.getUser();
     setState(() {
       if (_userLogin != null){
-        _userName = _userLogin.name;
         _userId = _userLogin.uid;
       }
     });
@@ -110,19 +103,29 @@ class JoinGroupPageState extends State<JoinGroupPage> {
 
   void _joinGroup(){
     if (_resultGroup != null){
-      var id = _resultGroup.code;
-      _queryMembers = _queryGroup.doc(id).collection('members');
-      _queryMembers.doc(_userId).get().then((value) {
+      var code = _resultGroup.code;
+      _queryGroup.doc(code).collection('members')
+          .doc(_userId).get().then((value) {
         if (!value.exists){
-          _queryMembers.doc(_userId).set({
-            'id' : _userId,
-            'latitude' : _currLatLng.latitude,
-            'longitude' : _currLatLng.longitude,
-          });
-          _queryUser.doc(_userId).collection('groups').doc(id).set({'id': id});
-          setState(() {
-            _searchMode = 5;
-            _isRefresh = true;
+          var distanceDest = Geolocator.distanceBetween(
+              _resultGroup.latitude, _resultGroup.longitude,
+              _currLatLng.latitude, _currLatLng.longitude);
+
+          MemberVO member = MemberVO(
+            id: _userLogin.uid,
+            latitude: _currLatLng.latitude,
+            longitude: _currLatLng.longitude,
+            distanceMember: 0.0,
+            distanceDestination: distanceDest,
+          );
+
+          _queryGroup.doc(code).collection('members').doc(_userId).set(member.toJson()).then((value){
+            _queryUser.doc(_userId).collection('groups').doc(code).set({'code': code}).then((value){
+              setState(() {
+                _searchMode = 5;
+                _isRefresh = true;
+              });
+            });
           });
         } else {
           setState(() {
@@ -138,28 +141,16 @@ class JoinGroupPageState extends State<JoinGroupPage> {
     var group = _resultGroup;
     var text = group.name;
     var code = group.code;
+    var location = group.location;
 
     var textColor = Colors.green[800];
     var shadowColor = Colors.green[300];
-    var backColor = Colors.green[200];
+    var backColor = Colors.white;
     var colors = [
       Colors.green[200],
       Colors.green[400],
       Colors.green[600],
     ];
-
-    var type = group.type;
-
-    if (type == '1'){
-      textColor = Colors.green[800];
-      shadowColor = Colors.green[300];
-      backColor = Colors.green[200];
-      colors = [
-        Colors.green[200],
-        Colors.green[400],
-        Colors.green[600],
-      ];
-    }
 
     Widget icon = Icon(
       Icons.group_rounded,
@@ -201,6 +192,13 @@ class JoinGroupPageState extends State<JoinGroupPage> {
           ),
           Text(
             code,
+            style: TextStyle(
+              fontSize: 14.0,
+              color: textColor,
+            ),
+          ),
+          Text(
+            location,
             style: TextStyle(
               fontSize: 14.0,
               color: textColor,
@@ -378,11 +376,12 @@ class JoinGroupPageState extends State<JoinGroupPage> {
               Container(
                 child: TextField(
                   controller: _textCodeController,
+                  textCapitalization: TextCapitalization.characters,
                   style: TextStyle(
                     fontSize: 16.0,
                   ),
                   decoration: InputDecoration(
-                    fillColor: kColorBorder,
+                    fillColor: kColorWhite,
                     filled: true,
                     prefixIcon: Icon(
                       Icons.group,
@@ -408,8 +407,12 @@ class JoinGroupPageState extends State<JoinGroupPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.all(Radius.circular(5.0,),),
                   ),
-                  color: kColorPrimary,
+                  color: kColorsGreen,
                   onPressed: () {
+                    FocusScopeNode currentFocus = FocusScope.of(context);
+                    if (!currentFocus.hasPrimaryFocus && currentFocus.focusedChild != null) {
+                      currentFocus.focusedChild.unfocus();
+                    }
                     _findGroup();
                   },
                   child: Center(
@@ -476,7 +479,7 @@ class JoinGroupPageState extends State<JoinGroupPage> {
       if (_resultGroup != null){
         _result = SliverToBoxAdapter(
           child: Container(
-            height: 150.0,
+            height: 140.0,
             child: _itemGroup(),
           ),
         );

@@ -1,11 +1,10 @@
 
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
 import 'package:touring/model/config/user.dart';
 import 'package:touring/model/vo/user.dart';
 import 'package:touring/view/home/home.dart';
 import 'package:touring/view/login/login.dart';
 import 'package:touring/view/splash/splash.dart';
+import 'package:flutter/material.dart';
 
 class MainPage extends StatefulWidget {
   MainPage({Key key}) : super(key: key);
@@ -14,17 +13,14 @@ class MainPage extends StatefulWidget {
 }
 
 class MainPageState extends State<MainPage> {
-  final FirebaseMessaging firebaseMessaging = FirebaseMessaging.instance;
-  String _token = "";
-
   @override
   void initState() {
     super.initState();
-    getToken();
+    //getToken();
   }
 
   void getToken() async {
-    _token = await firebaseMessaging.getToken();
+    //_token = await firebaseMessaging.getToken();
   }
 
   @override
@@ -39,9 +35,7 @@ class MainPageState extends State<MainPage> {
           if (snapshot.hasData) {
             UserVO user = snapshot.data;
             if (user != null){
-              if (user.tid == _token){
-                isLogin = true;
-              }
+              isLogin = true;
             }
           }
 

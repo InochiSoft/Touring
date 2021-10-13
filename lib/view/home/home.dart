@@ -1,26 +1,30 @@
 
-import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:touring/constant/color.dart';
 import 'package:touring/constant/constant.dart';
 import 'package:touring/helper/clipper.dart';
 import 'package:touring/layout/layout.dart';
 import 'package:touring/layout/model/vo/screen.dart';
-import 'package:touring/model/config/user.dart';
 import 'package:touring/model/vo/group.dart';
 import 'package:touring/model/vo/menu.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter_svg/svg.dart';
+import 'package:touring/model/config/user.dart';
 import 'package:touring/model/vo/user.dart';
 import 'package:touring/view/group/create.dart';
 import 'package:touring/view/group/info.dart';
 import 'package:touring/view/group/join.dart';
-import 'package:touring/view/group/list.dart';
 import 'package:touring/view/login/login.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:path_provider/path_provider.dart';
 
 class HomePage extends StatefulWidget {
   HomePage({Key key}) : super(key: key);
@@ -36,11 +40,13 @@ class HomePageState extends State<HomePage> {
   final List<GroupVO> _groupIndexes = [];
   List<Widget> _actionList = [];
 
+  bool _isLoading = false;
   UserVO _userLogin;
   String _userName = '';
   String _userId = '';
   bool _isLoggedIn = false;
   int _listMode = 0;
+
 
   final UserConfig _userCfg = UserConfig();
   CollectionReference _queryUser;
@@ -51,7 +57,6 @@ class HomePageState extends State<HomePage> {
     super.initState();
     _queryUser = FirebaseFirestore.instance.collection('users');
     _queryGroup = FirebaseFirestore.instance.collection('groups');
-    _initAction();
     _initMenu();
     _getUser();
   }
@@ -59,92 +64,6 @@ class HomePageState extends State<HomePage> {
   @override
   void dispose() {
     super.dispose();
-  }
-
-  void _getUser() async {
-    var _userCfg = UserConfig();
-    _userLogin = await _userCfg.getUser();
-    setState(() {
-      if (_userLogin != null){
-        _userName = _userLogin.name;
-        _userId = _userLogin.uid;
-        _getListGroup();
-      }
-    });
-  }
-
-  void _getListGroup2() async {
-    if (_userId.isNotEmpty){
-      var _snapshotUser = await _queryUser.doc(_userId).collection('groups').get();
-      if (_snapshotUser.size > 0){
-        setState(() {
-          _groupIndexes.clear();
-        });
-        for (var i = 0; i < _snapshotUser.docs.length; i++){
-          var element = _snapshotUser.docs[i];
-          var tmpGroup = GroupVO.fromJson(element.data());
-          setState(() {
-            _groupIndexes.add(tmpGroup);
-          });
-          var id = tmpGroup.id;
-          await _queryGroup.doc(id).get().then((value) {
-            if (value.exists){
-              var group = GroupVO.fromJson(value.data());
-              group.code = id;
-              setState(() {
-                _groupIndexes[i] = group;
-              });
-            }
-          });
-        }
-      }
-    }
-  }
-
-  void _getListGroup() async {
-    if (_userId.isNotEmpty){
-      _groupIndexes.clear();
-      _queryUser.doc(_userId).collection('groups').snapshots().listen((_snapshotUser) {
-        if (_snapshotUser.docs.isNotEmpty){
-          setState(() {
-            _listMode = 1;
-            _groupIndexes.clear();
-          });
-        }
-        for (var i = 0; i < _snapshotUser.docs.length; i++){
-          var element = _snapshotUser.docs[i];
-          var tmpGroup = GroupVO.fromJson(element.data());
-          setState(() {
-            _groupIndexes.add(tmpGroup);
-          });
-          var id = tmpGroup.id;
-          _queryGroup.doc(id).snapshots().listen((value) {
-            var group = GroupVO.fromJson(value.data());
-            group.code = id;
-            setState(() {
-              _groupIndexes[i] = group;
-            });
-          });
-          /*
-          _queryGroup.doc(id).get().then((value) {
-            if (value.exists){
-              var group = GroupVO.fromJson(value.data());
-              group.code = id;
-              setState(() {
-                _groupIndexes[i] = group;
-              });
-            }
-          });
-          */
-        }
-      });
-    }
-  }
-
-  void _refreshList(bool reload){
-    if (reload){
-      _getListGroup();
-    }
   }
 
   void _initMenu() {
@@ -157,8 +76,8 @@ class HomePageState extends State<HomePage> {
     menu.count = 8;
     menu.text = 'Buat Grup';
     menu.textColor = Colors.blue[800];
-    menu.shadowColor = Colors.blue[300];
-    menu.backColor = Colors.blue[200];
+    menu.shadowColor = Colors.grey[200];
+    menu.backColor = Colors.white;
     menu.colors = [
       Colors.blue[200],
       Colors.blue[400],
@@ -172,8 +91,8 @@ class HomePageState extends State<HomePage> {
     menu.count = 6;
     menu.text = 'Gabung Grup';
     menu.textColor = Colors.yellow[800];
-    menu.shadowColor = Colors.yellow[300];
-    menu.backColor = Colors.yellow[200];
+    menu.shadowColor = Colors.grey[200];
+    menu.backColor = Colors.white;
     menu.colors = [
       Colors.yellow[200],
       Colors.yellow[400],
@@ -184,11 +103,59 @@ class HomePageState extends State<HomePage> {
 
   }
 
+  void _getListGroup() async {
+    if (_userId.isNotEmpty){
+      _groupIndexes.clear();
+      _queryUser.doc(_userId).collection('groups').snapshots().listen((_snapshotUser) {
+        //setState(() {
+        _groupIndexes.clear();
+
+        if (_snapshotUser.docs.isNotEmpty){
+          _listMode = 1;
+        }
+        //});
+
+        for (var i = 0; i < _snapshotUser.docs.length; i++){
+          var element = _snapshotUser.docs[i];
+          var tmpGroup = GroupVO.fromJson(element.data());
+
+          //setState(() {
+          _groupIndexes.add(tmpGroup);
+          //});
+
+          var id = tmpGroup.code;
+          _queryGroup.doc(id).snapshots().listen((value) {
+            var group = GroupVO.fromJson(value.data());
+            group.code = id;
+            setState(() {
+              _groupIndexes[i] = group;
+            });
+          });
+        }
+      });
+    }
+  }
+
+  void _getUser() async {
+    var _userCfg = UserConfig();
+    _userLogin = await _userCfg.getUser();
+    if (_userLogin != null){
+      setState(() {
+        _userName = _userLogin.name;
+        _userId = _userLogin.uid;
+      });
+
+      _getListGroup();
+    }
+  }
+
   void _initAction(){
     _actionList.clear();
     _actionList = [
       IconButton(
-        icon: Icon(Icons.logout),
+        icon: Icon(Icons.logout,
+          color: kColorsGrey800,
+        ),
         tooltip: 'Keluar',
         onPressed: () {
           _logout();
@@ -196,53 +163,6 @@ class HomePageState extends State<HomePage> {
       ),
     ];
   }
-
-  void _menuClick(int index){
-    switch(index){
-      case 0:
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CreateGroupPage(),
-          ),
-        ).then((value){
-          _refreshList(value);
-        });
-        break;
-      case 1:
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => JoinGroupPage(),
-          ),
-        ).then((value){
-          _refreshList(value);
-        });
-        break;
-    }
-  }
-
-  void _groupClick(int index){
-    var group = _groupIndexes[index];
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => InfoGroupPage(
-          group: group,
-        ),
-      ),
-    ).then((value){
-      _refreshList(value);
-    });
-  }
-
-/*
-  StreamSubscription<Position> positionStream = Geolocator.getPositionStream(timeInterval: 60).listen(
-          (Position position) {
-        print(position == null ? 'Unknown' : position.latitude.toString() + ', ' + position.longitude.toString());
-        // locationOptions
-      });
-*/
 
   Widget _itemMenu(int index) {
     var menu = _menuIndexes[index];
@@ -278,6 +198,7 @@ class HomePageState extends State<HomePage> {
             style: TextStyle(
               fontSize: 20.0,
               color: textColor,
+              fontWeight: FontWeight.bold,
               shadows: [
                 Shadow(
                   color: textShadow,
@@ -394,26 +315,13 @@ class HomePageState extends State<HomePage> {
     var location = group.location;
 
     var textColor = Colors.green[800];
-    var shadowColor = Colors.green[300];
-    var backColor = Colors.green[200];
+    var shadowColor = Colors.grey[300];
+    var backColor = Colors.white;
     var colors = [
       Colors.green[200],
       Colors.green[400],
       Colors.green[600],
     ];
-
-    var type = group.type;
-
-    if (type == '1'){
-      textColor = Colors.green[800];
-      shadowColor = Colors.green[300];
-      backColor = Colors.green[200];
-      colors = [
-        Colors.green[200],
-        Colors.green[400],
-        Colors.green[600],
-      ];
-    }
 
     Widget icon = Icon(
       Icons.group_rounded,
@@ -440,6 +348,7 @@ class HomePageState extends State<HomePage> {
               Text(
                 text,
                 style: TextStyle(
+                  fontWeight: FontWeight.bold,
                   fontSize: 20.0,
                   color: textColor,
                   shadows: [
@@ -570,44 +479,146 @@ class HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _logout() async {
-    _isLoggedIn = await googleSignIn.isSignedIn();
-    if (_isLoggedIn) {
-      await googleSignIn.signOut();
-    }
-
-    _isLoggedIn = await googleSignIn.isSignedIn();
-    if (!_isLoggedIn) {
-      await firebaseAuth.signOut();
-      _userCfg.clearUser();
-      Navigator.of(context).pop();
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => LoginPage(),
-        ),
-      );
-    }
-
-    /*
-    var message = await UserProvider().logout(_userLogin);
-    if (message != null){
-      if (message.isNotEmpty){
-        Toast.show(message, context, duration: Toast.LENGTH_SHORT, gravity: Toast.BOTTOM);
-        Navigator.of(context).pop();
+  void _menuClick(int index){
+    switch(index){
+      case 0:
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => LoginPage(),
+            builder: (context) => CreateGroupPage(),
           ),
-        );
+        ).then((value){
+          _refreshList(value);
+        });
+
+        break;
+      case 1:
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => JoinGroupPage(),
+          ),
+        ).then((value){
+          _refreshList(value);
+        });
+
+        break;
+    }
+  }
+
+  void _groupClick(int index){
+    var group = _groupIndexes[index];
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => InfoGroupPage(
+          group: group,
+        ),
+      ),
+    ).then((value){
+      //_refreshList(value);
+    });
+
+  }
+
+  void _logout() {
+    googleSignIn.isSignedIn().then((value){
+      googleSignIn.signOut().then((value){
+        firebaseAuth.signOut().then((value){
+          _userCfg.clearUser();
+          Navigator.of(context).pop();
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LoginPage(),
+            ),
+          );
+        });
+      });
+    });
+  }
+
+  void _refreshList(bool reload){
+    /*
+    if (reload != null){
+      if (reload){
+        setState(() {
+          _getListGroup();
+        });
       }
     }
     */
   }
 
+  void showAlertDialog(BuildContext context) {
+    Widget cancelButton = MaterialButton(
+      child: Text("Tutup"),
+      onPressed:  () {
+        Navigator.pop(context);
+      },
+    );
+
+    AlertDialog alert = AlertDialog(
+      title: Text("Informasi"),
+      content: Text("Maaf, saat ini menu belum tersedia"),
+      actions: [
+        cancelButton,
+      ],
+    );  // show the dialog
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return alert;
+      },
+    );
+  }
+
+  void _alert(BuildContext context, String title, String text) {
+    Widget cancelButton = MaterialButton(
+      child: Text("Tutup"),
+      onPressed:  () {
+        Navigator.pop(context);
+      },
+    );
+
+    AlertDialog alert = AlertDialog(
+      title: Text(title),
+      content: Text(text),
+      actions: [
+        cancelButton,
+      ],
+    );  // show the dialog
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return alert;
+      },
+    );
+  }
+
+  String generateRandomString(int len) {
+    var r = Random();
+    const _chars = 'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz1234567890';
+    return List.generate(len, (index) => _chars[r.nextInt(_chars.length)]).join();
+  }
+
+  Future<File> createFileOfPdfUrl(url) async {
+    final filename = url.substring(url.lastIndexOf("/") + 1);
+    var request = await HttpClient().getUrl(Uri.parse(url));
+    var response = await request.close();
+    var bytes = await consolidateHttpClientResponseBytes(response);
+    String dir = (await getApplicationDocumentsDirectory()).path;
+    File file = new File('$dir/$filename');
+    await file.writeAsBytes(bytes);
+    return file;
+  }
+
   @override
   Widget build(BuildContext context) {
+    _initAction();
+
     Widget _appBar = SliverAppBar(
       toolbarHeight: 80.0,
       elevation: 1.0,
@@ -621,27 +632,42 @@ class HomePageState extends State<HomePage> {
             Container(
               padding: EdgeInsets.only(left: 8.0, right: 8.0),
               child: Text(
-                'Dasbor',
+                kAppTitle,
                 textAlign: TextAlign.left,
                 style: TextStyle(
-                  color: Colors.black87,
+                  color: kColorsGrey800,
                   fontSize: 20.0,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
             Container(
-              margin: EdgeInsets.only(top: 8.0),
+              margin: EdgeInsets.only(top: 0.0),
               padding: EdgeInsets.only(left: 8.0, right: 8.0),
               child: Text(
-                'Halo $_userName!',
+                kAppDescription,
+                maxLines: 2,
                 textAlign: TextAlign.left,
                 style: TextStyle(
-                  color: Colors.black87,
+                  color: kColorsGrey800,
                   fontSize: 16.0,
                 ),
               ),
             ),
+            /*
+            Container(
+              margin: EdgeInsets.only(top: 2.0),
+              padding: EdgeInsets.only(left: 8.0, right: 8.0),
+              child: Text(
+                'Hai $_userName',
+                textAlign: TextAlign.left,
+                style: TextStyle(
+                  color: kColorsLightBlue200,
+                  fontSize: 16.0,
+                ),
+              ),
+            ),
+            */
           ],
         ),
       ),
@@ -654,14 +680,43 @@ class HomePageState extends State<HomePage> {
     final Widget cover = SvgPicture.asset(
       assetName,
       width: MediaQuery.of(context).size.width,
-      semanticsLabel: 'Destinations',
+      semanticsLabel: 'Dashboard',
     );
 
     Widget _header = SliverToBoxAdapter(
       child: Center(
         child: Container(
+          padding: EdgeInsets.all(0.0,),
           color: kColorPrimary,
           child: cover,
+        ),
+      ),
+    );
+
+    Widget _loading = SliverToBoxAdapter(
+      child: Center(
+        child: Container(
+          alignment: Alignment.center,
+          margin: EdgeInsets.only(top: 5.0,),
+          width: 44.0,
+          height: 44.0,
+          decoration: BoxDecoration(
+            color: kColorsLightBlue200,
+            borderRadius: BorderRadius.all(Radius.circular(20.0)),
+            border: Border.all(
+              color: kColorPrimary,
+              width: 1,
+              style: BorderStyle.solid,
+            ),
+          ),
+          child: Container(
+            width: 30.0,
+            height: 30.0,
+            child: CircularProgressIndicator(
+              strokeWidth: 4.0,
+              valueColor : AlwaysStoppedAnimation(kColorPrimary),
+            ),
+          ),
         ),
       ),
     );
@@ -732,7 +787,7 @@ class HomePageState extends State<HomePage> {
             color: Colors.white,
             borderRadius: BorderRadius.all(Radius.circular(20.0)),
             border: Border.all(
-              color: kColorBorder,
+              color: kColorsLightBlue200,
               width: 1,
               style: BorderStyle.solid,
             ),

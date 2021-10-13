@@ -1,6 +1,7 @@
+import 'package:touring/constant/constant.dart';
+import 'package:touring/view/main/main.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:touring/view/main/main.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +18,7 @@ class _TouringAppState extends State<TouringApp> {
   @override
   Widget build(BuildContext context){
     return MaterialApp(
-      title: 'Touring Mobile',
+      title: kAppTitle,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,

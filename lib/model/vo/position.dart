@@ -1,28 +1,40 @@
 import 'dart:convert';
 
 class PositionVO {
-  String created;
-  double latitude;
-  double longitude;
+  int lastTime;
+  double lastLatitude;
+  double lastLongitude;
+  int currentTime;
+  double currentLatitude;
+  double currentLongitude;
 
   PositionVO({
-    this.created,
-    this.latitude,
-    this.longitude,
+    this.lastTime,
+    this.lastLatitude,
+    this.lastLongitude,
+    this.currentTime,
+    this.currentLatitude,
+    this.currentLongitude,
   });
 
   factory PositionVO.fromJson(Map<String, dynamic> json) {
     return PositionVO(
-      created: json.containsKey('created') ? json['created'].toString() : '0',
-      latitude: json.containsKey('latitude') ? json['latitude'] : 0.0,
-      longitude: json.containsKey('longitude') ? json['longitude'] : 0.0,
+      lastTime: json.containsKey('lastTime') ? json['lastTime'] : 0,
+      lastLatitude: json.containsKey('lastLatitude') ? json['lastLatitude'] : 0.0,
+      lastLongitude: json.containsKey('lastLongitude') ? json['lastLongitude'] : 0.0,
+      currentTime: json.containsKey('currentTime') ? json['currentTime'] : 0,
+      currentLatitude: json.containsKey('currentLatitude') ? json['currentLatitude'] : 0.0,
+      currentLongitude: json.containsKey('currentLongitude') ? json['currentLongitude'] : 0.0,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'created': created ?? '0',
-    'latitude': latitude ?? 0.0,
-    'longitude': longitude ?? 0.0,
+    'lastTime': lastTime ?? 0,
+    'lastLatitude': lastLatitude ?? 0.0,
+    'lastLongitude': lastLongitude ?? 0.0,
+    'currentTime': currentTime ?? 0,
+    'currentLatitude': currentLatitude ?? 0.0,
+    'currentLongitude': currentLongitude ?? 0.0,
   };
 
   @override

@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:touring/constant/constant.dart';
 import 'package:touring/model/vo/user.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MainConfig {
   String searchType = '';

@@ -1,7 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:touring/constant/constant.dart';
+import 'package:touring/constant/color.dart';
 
 import 'model/vo/screen.dart';
 
@@ -12,7 +12,6 @@ class LayoutUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget _appBar = Container();
-    Widget _header = Container();
     var _slivers = <Widget>[];
 
     switch(screen.template){
@@ -67,6 +66,9 @@ class LayoutUI extends StatelessWidget {
       case Templates.chat:
         // TODO: Handle this case.
         break;
+      default:
+        // TODO: Handle this case.
+        break;
     }
 
     if (screen.body != null) {
@@ -79,10 +81,9 @@ class LayoutUI extends StatelessWidget {
       padding: EdgeInsets.all(0),
       width: double.infinity,
       height: double.infinity,
-      color: kColorSecondary,
+      color: kColorPrimary,
       child: CustomScrollView(
         slivers: _slivers,
-        controller: screen.controller,
       ),
     );
   }

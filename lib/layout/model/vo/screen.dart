@@ -12,20 +12,19 @@ class ScreenVO {
   final List<Widget> body;
   final Widget header;
   final Widget footer;
-  ScrollController controller;
 
   ScreenVO({
-    this.id,
-    this.template,
-    this.icon,
-    this.title,
-    this.subTitle,
-    this.color,
-    this.image,
-    this.header,
-    this.footer,
-    this.body,
-    this.hint});
+     this.id,
+     this.template,
+     this.icon,
+     this.title,
+     this.subTitle,
+     this.color,
+     this.image,
+     this.header,
+     this.footer,
+     this.body,
+     this.hint});
 }
 
 enum Templates {

@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:package_info/package_info.dart';
+import 'package:touring/constant/color.dart';
 import 'package:touring/constant/constant.dart';
 import 'package:touring/layout/layout.dart';
 import 'package:touring/layout/model/vo/screen.dart';
+import 'package:flutter/material.dart';
+import 'package:package_info/package_info.dart';
+import 'package:flutter_svg/svg.dart';
 
 class SplashPage extends StatefulWidget {
   SplashPage({Key key}) : super(key: key);
@@ -23,8 +25,14 @@ class SplashPageState extends State<SplashPage> {
 
     String version = '1.0.0';
 
-    Widget _item =
-    Container(
+    var assetName = 'assets/image/destinations.svg';
+    Widget cover = SvgPicture.asset(
+      assetName,
+      width: MediaQuery.of(context).size.width,
+      semanticsLabel: 'Logo',
+    );
+
+    Widget _item = Container(
       padding: EdgeInsets.only(
         top: 10,
         bottom: 10,
@@ -33,26 +41,21 @@ class SplashPageState extends State<SplashPage> {
       ),
       width: MediaQuery.of(context).size.width,
       height: MediaQuery.of(context).size.height,
-      color: kColorPrimary,
+      color: kColorsTeal300,
       child: Center(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             Container(
-              width: 140.0,
-              height: 140.0,
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: ExactAssetImage('assets/image/logo.png'),
-                  fit: BoxFit.cover,
-                ),
-              ),
+              width: 240.0,
+              height: 240.0,
+              child: cover,
             ),
             SizedBox(height: 10,),
-            Text("VTS MOBILE",
+            Text(kAppTitle,
               style: TextStyle(
-                color: kColorBorder,
+                color: kColorsTeal800,
                 fontSize: 24.0,
               ),
             ),
@@ -66,7 +69,7 @@ class SplashPageState extends State<SplashPage> {
                       version = packageInfo.version;
                       return Text("Version: " + version,
                         style: TextStyle(
-                          color: kColorBorder,
+                          color: kColorsTeal800,
                           fontSize: 12.0,
                         ),
                       );
@@ -75,7 +78,7 @@ class SplashPageState extends State<SplashPage> {
                 }
                 return Text("Version: " + version,
                   style: TextStyle(
-                    color: kColorBorder,
+                    color: kColorsTeal800,
                     fontSize: 12.0,
                   ),
                 );

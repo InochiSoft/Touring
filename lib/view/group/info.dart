@@ -11,20 +11,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:share/share.dart';
 import 'package:toast/toast.dart';
-import 'package:touring/constant/constant.dart';
-import 'package:touring/helper/clipper.dart';
+import 'package:touring/constant/color.dart';
 import 'package:touring/layout/layout.dart';
 import 'package:touring/layout/model/vo/screen.dart';
 import 'package:touring/model/config/user.dart';
 import 'package:touring/model/vo/group.dart';
 import 'package:touring/model/vo/member.dart';
-import 'package:touring/model/vo/menu.dart';
 import 'package:touring/model/vo/user.dart';
-import 'package:touring/view/group/create.dart';
-import 'package:touring/view/group/join.dart';
-import 'package:touring/view/group/list.dart';
 import 'package:touring/view/group/live.dart';
-import 'package:touring/view/login/login.dart';
 
 class InfoGroupPage extends StatefulWidget {
   final GroupVO group;
@@ -88,7 +82,6 @@ class InfoGroupPageState extends State<InfoGroupPage> {
     _queryGroup.doc(_group.code).snapshots().listen((value) {
       if (value.exists){
         _group = GroupVO.fromJson(value.data());
-        _group.code = value.id;
         _textCodeController.text = _group.code;
         _textNameController.text = _group.name;
         _textLocationController.text = _group.location;
@@ -288,13 +281,13 @@ class InfoGroupPageState extends State<InfoGroupPage> {
             SizedBox(height: 10.0,),
             _inputBox('Nama Grup', _textNameController),
             SizedBox(height: 10.0,),
+            _inputBox('Kreator Grup', _textLeaderController),
+            SizedBox(height: 10.0,),
             _inputBox('Destinasi', _textLocationController),
             SizedBox(height: 10.0,),
             _inputBox('Latitude', _textLatitudeController),
             SizedBox(height: 10.0,),
             _inputBox('Longitude', _textLongitudeController),
-            SizedBox(height: 10.0,),
-            _inputBox('Ketua Grup', _textLeaderController),
             Divider(),
             Container(
               color: Color.fromRGBO(0, 0, 0, 255),
@@ -306,6 +299,7 @@ class InfoGroupPageState extends State<InfoGroupPage> {
                 onPressed: () {
                   var text = 'Kode Grup: ${_group.code} \n'
                       'Nama Grup: ${_group.name} \n'
+                      'Kreator Grup: ${_textLeaderController.text} \n'
                       'Lokasi: ${_group.location} \n'
                       'Latitude: ${_group.latitude} \n'
                       'Longitude: ${_group.longitude} \n'

@@ -1,24 +1,23 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:toast/toast.dart';
-import 'package:touring/constant/constant.dart';
-import 'package:touring/helper/clipper.dart';
+import 'package:touring/constant/color.dart';
 import 'package:touring/layout/layout.dart';
 import 'package:touring/layout/model/vo/screen.dart';
 import 'package:touring/model/config/user.dart';
 import 'package:touring/model/vo/group.dart';
+import 'package:touring/model/vo/member.dart';
 import 'package:touring/model/vo/menu.dart';
 import 'package:touring/model/vo/user.dart';
-import 'package:touring/view/login/login.dart';
-import 'package:touring/model/vo/locations.dart' as locations;
 
 class CreateGroupPage extends StatefulWidget {
   CreateGroupPage({Key key}) : super(key: key);
@@ -33,8 +32,6 @@ class CreateGroupPageState extends State<CreateGroupPage> {
   Position _currPosition;
   LatLng _currLatLng;
   LatLng _destLatLng;
-  String _currentAddress;
-  MarkerId _selectedMarker;
   Marker _destMarker;
   Marker _currMarker;
   bool _isRefresh = false;
@@ -52,7 +49,6 @@ class CreateGroupPageState extends State<CreateGroupPage> {
 
   CollectionReference _queryUser;
   CollectionReference _queryGroup;
-  CollectionReference _queryMembers;
 
   @override
   void initState() {
@@ -182,6 +178,12 @@ class CreateGroupPageState extends State<CreateGroupPage> {
     });
   }
 
+  String _generateCode(int len) {
+    var r = Random();
+    const _chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789';
+    return List.generate(len, (index) => _chars[r.nextInt(_chars.length)]).join();
+  }
+
   Future<void> _createGroup() async {
     return showDialog(
       context: context,
@@ -218,32 +220,58 @@ class CreateGroupPageState extends State<CreateGroupPage> {
               onPressed: () {
                 if (_textNameController.text.isNotEmpty &&
                     _textLocationController.text.isNotEmpty){
+                  var time = DateTime.now().millisecondsSinceEpoch;
                   var groupVO = GroupVO();
+                  var code = _generateCode(6);
+                  groupVO.code = code;
                   groupVO.creator = _userLogin.uid;
                   groupVO.longitude = _destLatLng.longitude;
                   groupVO.latitude = _destLatLng.latitude;
                   groupVO.name = _textNameController.text;
                   groupVO.location = _textLocationController.text;
+                  groupVO.type = 0;
+                  groupVO.created = time;
 
-                  print(groupVO.code);
-                  print(groupVO.id);
-                  print(groupVO.toJson());
+                  _queryGroup.doc(code).get().then((value){
+                    if (value.exists){
+                      Toast.show('Grup ${groupVO.name} gagal dibuat, silakan coba lagi',
+                        this.context,
+                        duration: Toast.LENGTH_LONG,
+                        gravity: Toast.BOTTOM,
+                      );
+                    } else {
+                      _queryGroup.doc(code).set(groupVO.toJson()).then((value){
+                        var distanceDest = Geolocator.distanceBetween(
+                            _destLatLng.latitude, _destLatLng.longitude,
+                            _currLatLng.latitude, _currLatLng.longitude);
 
-                  _queryGroup.add(groupVO.toJson()).then((result) {
-                    var id = result.id;
-                    _queryMembers = _queryGroup.doc(id).collection('members');
-                    _queryMembers.doc(_userLogin.uid).set({
-                      'id' : _userLogin.uid,
-                      'latitude' : _currLatLng.latitude,
-                      'longitude' : _currLatLng.longitude,
-                    });
-                    _queryUser.doc(_userLogin.uid).collection('groups').doc(id).set({'id': id});
-                    Toast.show('Grup ${groupVO.name} berhasil dibuat',
-                      this.context,
-                      duration: Toast.LENGTH_LONG,
-                      gravity: Toast.BOTTOM,
-                    );
-                    _isRefresh = true;
+                        MemberVO member = MemberVO(
+                          id: _userLogin.uid,
+                          latitude: _currLatLng.latitude,
+                          longitude: _currLatLng.longitude,
+                          distanceMember: 0.0,
+                          distanceDestination: distanceDest,
+                        );
+
+                        _queryGroup.doc(code).collection('members')
+                            .doc(_userLogin.uid).set(member.toJson()
+                        ).then((value){
+                          _queryUser.doc(_userLogin.uid).collection('groups')
+                              .doc(code).set({'code': code}).then((value){
+                            Toast.show('Grup ${groupVO.name} berhasil dibuat',
+                              this.context,
+                              duration: Toast.LENGTH_LONG,
+                              gravity: Toast.BOTTOM,
+                            );
+
+                            _textNameController.text = "";
+                            _textLocationController.text = "";
+
+                            _isRefresh = true;
+                          });
+                        });
+                      });
+                    }
                   });
                   Navigator.pop(context);
                 }
@@ -393,7 +421,7 @@ class CreateGroupPageState extends State<CreateGroupPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.all(Radius.circular(5.0,),),
                   ),
-                  color: kColorPrimary,
+                  color: kColorsGreen500,
                   onPressed: () {
                     _createGroup();
                   },

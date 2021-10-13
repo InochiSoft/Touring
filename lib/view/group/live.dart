@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
@@ -8,6 +10,8 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:toast/toast.dart';
+import 'package:touring/constant/color.dart';
 import 'package:touring/constant/constant.dart';
 import 'package:touring/layout/layout.dart';
 import 'package:touring/layout/model/vo/screen.dart';
@@ -17,8 +21,19 @@ import 'package:touring/model/vo/member.dart';
 import 'package:touring/model/vo/menu.dart';
 import 'package:touring/model/vo/position.dart';
 import 'package:touring/model/vo/user.dart';
-import 'dart:io';
-//import 'dart:html' show Platform;
+
+enum _PositionItemType {
+  log,
+  position,
+}
+
+class _PositionItem {
+  _PositionItem(this.type, this.displayValue, this.position);
+
+  final _PositionItemType type;
+  final String displayValue;
+  final Position position;
+}
 
 class LiveGroupPage extends StatefulWidget {
   final GroupVO group;
@@ -34,12 +49,10 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   LatLng _currLatLng;
   LatLng _destLatLng;
   Marker _destMarker;
-  Marker _currMarker;
 
   GoogleMapController _googleMapController;
   final Map<MarkerId, Marker> _markers = <MarkerId, Marker>{};
   final Map<String, MemberVO> _members = <String, MemberVO>{};
-  final Map<String, LatLng> _positions = <String, LatLng>{};
 
   final Set<Polyline> _polylines = {};
 
@@ -49,31 +62,33 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   UserVO _userLogin;
   GroupVO _group;
   MemberVO _selectedMember;
+  MemberVO _selectedUser;
+  MemberVO _selectedHeader;
 
   String _userName = '';
   String _userId = '';
-  var _positionStream;
-  var _speed = 0.0;
 
   CollectionReference _queryUser;
   CollectionReference _queryGroup;
-  CollectionReference _queryMembers;
   CollectionReference _queryLives;
-
-  double _lastLatitude = 0.0000000;
-  double _lastLongitude = 0.0000000;
-  double _minDistance = 1000000000.0;
 
   dynamic languages;
   String language;
-  double volume = 0.5;
+  double volume = 1.0;
   double pitch = 1.0;
-  double rate = 0.9;
+  double rate = 0.5;
   bool isCurrentLanguageInstalled = false;
 
-  String _newVoiceText;
-
   FlutterTts flutterTts;
+
+  var _currPosition = PositionVO();
+  var _lastPosition = PositionVO();
+
+  final GeolocatorPlatform _geolocatorPlatform = GeolocatorPlatform.instance;
+
+  final List<_PositionItem> _positionItems = <_PositionItem>[];
+  StreamSubscription<Position> _positionStreamSubscription;
+  bool positionStreamStarted = false;
 
   @override
   void initState() {
@@ -82,17 +97,18 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     _group = widget.group;
     _currLatLng = LatLng(0, 0);
     _destLatLng = _currLatLng;
-    _queryUser = FirebaseFirestore.instance.collection('users');
-    _queryGroup = FirebaseFirestore.instance.collection('groups');
-    _queryLives = FirebaseFirestore.instance.collection('lives');
     _initUserMember();
     _getUser();
   }
 
   @override
   void dispose() {
-    super.dispose();
+    if (_positionStreamSubscription != null) {
+      _positionStreamSubscription.cancel();
+      _positionStreamSubscription = null;
+    }
     flutterTts.stop();
+    super.dispose();
   }
 
   void _getUser() async {
@@ -104,9 +120,174 @@ class LiveGroupPageState extends State<LiveGroupPage> {
       _setUserMember();
 
       if (_group != null) {
-        _getCurrentLocation();
+        var time = DateTime.now().millisecondsSinceEpoch;
+
+        _lastPosition.lastTime = time;
+        _lastPosition.lastLatitude = 0.0;
+        _lastPosition.lastLongitude = 0.0;
+        _lastPosition.currentTime = time;
+        _lastPosition.currentLatitude = 0.0;
+        _lastPosition.currentLongitude = 0.0;
+
+        _queryUser = FirebaseFirestore.instance.collection('users');
+        _queryGroup = FirebaseFirestore.instance.collection('groups');
+        _queryLives = FirebaseFirestore.instance.collection('lives');
+
+        _queryLives.doc(_group.code).collection('members')
+            .doc(_userId).get().then((value){
+          if (!value.exists){
+            _queryLives.doc(_group.code).collection('members')
+                .doc(_userId).set(_lastPosition.toJson()).then((value) {
+              _getCurrentPosition();
+            });
+          } else {
+            _getCurrentPosition();
+          }
+        });
+
       }
     }
+  }
+
+  void _toggleListening() {
+    if (_positionStreamSubscription == null) {
+      final positionStream = _geolocatorPlatform.getPositionStream(
+        timeInterval: kTimeInterval
+      );
+      _positionStreamSubscription = positionStream.handleError((error) {
+        _positionStreamSubscription.cancel();
+        _positionStreamSubscription = null;
+      }).listen((position){
+        print('getPositionStream');
+        _updatePositionList(
+            _PositionItemType.position,
+            position.toString(),
+            position
+        );
+      });
+      _positionStreamSubscription.pause();
+    }
+
+    setState(() {
+      if (_positionStreamSubscription == null) {
+        return;
+      }
+
+      String statusDisplayValue;
+      if (_positionStreamSubscription.isPaused) {
+        _positionStreamSubscription.resume();
+        statusDisplayValue = 'resumed';
+      } else {
+        _positionStreamSubscription.pause();
+        statusDisplayValue = 'paused';
+      }
+
+      _updatePositionList(
+          _PositionItemType.log,
+          'Listening for position updates $statusDisplayValue',
+          null
+      );
+    });
+  }
+
+  void _updatePositionList(_PositionItemType type, String displayValue, Position position) {
+    print(displayValue);
+    _positionItems.add(_PositionItem(type, displayValue, position));
+    if (type == _PositionItemType.position){
+      if (position != null){
+        _updateLocation(position);
+      }
+    }
+  }
+
+  Future<void> _getCurrentPosition() async {
+    final hasPermission = await _handlePermission();
+
+    if (!hasPermission) {
+      return;
+    }
+
+    final position = await _geolocatorPlatform.getCurrentPosition();
+
+    //_toggleServiceStatusStream();
+    _toggleListening();
+    //_updatePositions();
+
+    _updatePositionList(
+        _PositionItemType.position,
+        position.toString(),
+        position
+    );
+  }
+
+  Future<bool> _handlePermission() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await _geolocatorPlatform.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      Toast.show(kLocationServicesDisabledMessage,
+        this.context,
+        duration: Toast.LENGTH_LONG,
+        gravity: Toast.BOTTOM,
+      );
+
+      _updatePositionList(
+          _PositionItemType.log,
+          kLocationServicesDisabledMessage,
+          null
+      );
+
+      return false;
+    }
+
+    permission = await _geolocatorPlatform.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await _geolocatorPlatform.requestPermission();
+      if (permission == LocationPermission.denied) {
+        Toast.show(kPermissionDeniedMessage,
+          this.context,
+          duration: Toast.LENGTH_LONG,
+          gravity: Toast.BOTTOM,
+        );
+
+        _updatePositionList(
+            _PositionItemType.log,
+            kPermissionDeniedMessage,
+            null
+        );
+
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      Toast.show(kPermissionDeniedForeverMessage,
+        this.context,
+        duration: Toast.LENGTH_LONG,
+        gravity: Toast.BOTTOM,
+      );
+      _updatePositionList(
+          _PositionItemType.log,
+          kPermissionDeniedForeverMessage,
+          null
+      );
+
+      return false;
+    }
+
+    Toast.show(kPermissionGrantedMessage,
+      this.context,
+      duration: Toast.LENGTH_LONG,
+      gravity: Toast.BOTTOM,
+    );
+
+    _updatePositionList(
+        _PositionItemType.log,
+        kPermissionGrantedMessage,
+        null
+    );
+    return true;
   }
 
   void _initUserMember(){
@@ -118,6 +299,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     _members['0'].speed = 0.0;
 
     _selectedMember = _members['0'];
+    _selectedUser = _members['0'];
   }
 
   void _setUserMember() async {
@@ -210,284 +392,319 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     });
   }
 
-  void _getCurrentLocation() async {
-    final icon = await BitmapDescriptor.fromAssetImage(
-        ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/green_bike.png');
+  void _updateLocation(Position position) async {
+    var destLatitude = _group.latitude;
+    var destLongitude = _group.longitude;
+    _destLatLng = LatLng(destLatitude, destLongitude);
 
-    await _queryLives.doc(_group.code).collection('members').doc(_userId).delete();
-    var position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
+    var currentTime = DateTime.now().millisecondsSinceEpoch;
+    double currentLatitude = position.latitude;
+    double currentLongitude = position.longitude;
 
-    var time = DateTime.now().millisecondsSinceEpoch;
-    var data = {
-      'created' : time,
-      'latitude' : position.latitude,
-      'longitude' : position.longitude,
-    };
+    _currPosition.currentTime = currentTime;
+    _currPosition.currentLatitude = currentLatitude;
+    _currPosition.currentLongitude = currentLongitude;
 
-    if (position.latitude != _lastLatitude){
-      if (position.longitude != _lastLongitude){
-        print(position.latitude);
-        print(_lastLatitude);
+    var distance = Geolocator.distanceBetween(
+        _lastPosition.currentLatitude, _lastPosition.currentLongitude,
+        currentLatitude, currentLongitude);
 
-        setState(() {
-          _currLatLng = LatLng(position.latitude, position.longitude);
-          _lastLatitude = position.latitude;
-          _lastLongitude = position.longitude;
+    var distanceDest = Geolocator.distanceBetween(
+        _destLatLng.latitude, _destLatLng.longitude,
+        currentLatitude, currentLongitude);
+
+    if (distance > 0.0){
+      _queryLives.doc(_group.code).collection('members')
+          .doc(_userId).collection('records').get().then((value){
+        var size = value.size;
+        var num = (size + 1).toString();
+        int lastTime = currentTime;
+
+        double lastLatitude = currentLatitude;
+        double lastLongitude = currentLongitude;
+
+        if (size > 0){
+          var lastData = value.docs[size - 1].data();
+          if (lastData != null){
+            var lastRecord = PositionVO.fromJson(lastData);
+            if (lastRecord != null){
+              lastTime = lastRecord.currentTime;
+              lastLatitude = lastRecord.currentLatitude;
+              lastLongitude = lastRecord.currentLongitude;
+              if (lastLatitude == null) lastLatitude = 0.0;
+              if (lastLongitude == null) lastLongitude = 0.0;
+            }
+            if (lastTime == 0) lastTime = currentTime;
+          }
+        }
+
+        _currPosition.lastTime = lastTime;
+        _currPosition.lastLatitude = lastLatitude;
+        _currPosition.lastLongitude = lastLongitude;
+
+        _queryLives.doc(_group.code).collection('members')
+            .doc(_userId).collection('records')
+            .doc(num.padLeft(9, '0'))
+            .set(_currPosition.toJson()).then((value){
+
+          _queryLives.doc(_group.code).collection('members')
+              .doc(_userId).update(_currPosition.toJson()).then((value) {
+
+            _lastPosition = _currPosition;
+          });
         });
 
-        await _queryLives.doc(_group.code).collection('members')
-            .doc(_userId).collection('positions')
-            .doc('first').set(data);
+        var distanceMove = Geolocator.distanceBetween(
+            lastLatitude, lastLongitude,
+            currentLatitude, currentLongitude);
 
-        await _queryLives.doc(_group.code).collection('members')
-            .doc(_userId).collection('positions')
-            .doc('last').set(data);
+        double speed = 0.0;
 
-        setState(() {
-          _currMarker = Marker(
-            icon: icon,
-            markerId: MarkerId(_userId),
-            position: _currLatLng,
-            infoWindow: InfoWindow(
-              title: 'Anda',
-            ),
-            onTap: (){
-              setState(() {
-                _selectedMember = _members[_userId];
-              });
-            },
-          );
+        var balanceMilli = (currentTime - lastTime);
+        if (balanceMilli > 0){
+          var balance = balanceMilli / 1000;
 
-          _markers[MarkerId(_userId)] = _currMarker;
-          _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
+          if (distanceMove > 0){
+            if (balance > 0){
+              var time = balance / 3600.0;
+              var distanceKM = distanceMove / 1000.0;
+              speed = distanceKM / time;
+            }
+          }
+        }
+
+        _queryGroup.doc(_group.code).collection('members')
+            .doc(_userId).update({
+          'latitude' : position.latitude,
+          'longitude' : position.longitude,
+          'distanceDestination' : distanceDest,
+          'speed' : speed,
+        }).then((value) {
+          _updatePositions();
         });
-
-        _updateLocation();
-        _updatePositions();
-      }
+      });
     }
   }
 
-  void _updateLocation() async {
-    final icon = await BitmapDescriptor.fromAssetImage(
+  void _updatePositions() async {
+    _members.clear();
+
+    List<MemberVO> memberDistances = [];
+    List<MemberVO> memberSpeeds = [];
+
+    final iconUser = await BitmapDescriptor.fromAssetImage(
         ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/green_bike.png');
 
-    _positionStream = Geolocator.getPositionStream(
-      desiredAccuracy: LocationAccuracy.high,
-      distanceFilter: 25,
-    ).listen((Position position){
-      var time = DateTime.now().millisecondsSinceEpoch;
-      var lastPosition = PositionVO();
+    final iconMember = await BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/black_bike.png');
 
-      lastPosition.created = time.toString();
-      lastPosition.latitude = position.latitude;
-      lastPosition.longitude = position.longitude;
+    final iconHeader = await BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/red_bike.png');
 
-      if (_lastLatitude.toStringAsFixed(7) != position.latitude.toStringAsFixed(7)){
-        if (_lastLongitude.toStringAsFixed(7) != position.longitude.toStringAsFixed(7)){
+    var destLatitude = _group.latitude;
+    var destLongitude = _group.longitude;
+    _destLatLng = LatLng(destLatitude, destLongitude);
 
-          setState(() {
-            _lastLatitude = position.latitude;
-            _lastLongitude = position.longitude;
-            _currLatLng = LatLng(position.latitude, position.longitude);
-          });
+    _queryGroup.doc(_group.code).collection('members')
+        .snapshots().listen((_snapshotGroup) {
 
-          _queryLives.doc(_group.code).collection('members')
-              .doc(_userId).collection('positions')
-              .doc('last').set(lastPosition.toJson()).then((value) {
+      double lowestDistance = 0.0;
 
-            _queryLives.doc(_group.code).collection('members')
-                .doc(_userId).collection('records').get().then((value){
-              var size = value.size;
-              var num = size.toString();
+      memberDistances.clear();
+      memberSpeeds.clear();
 
-              _queryLives.doc(_group.code).collection('members')
-                  .doc(_userId).collection('records')
-                  .doc(num.padLeft(9, '0'))
-                  .set(lastPosition.toJson());
-            });
+      for (var i = 0; i < _snapshotGroup.docs.length; i++) {
+        var element = _snapshotGroup.docs[i];
+        var member = MemberVO.fromJson(element.data());
+        var memberId = member.id;
+        var currentLatitude = member.latitude;
+        var currentLongitude = member.longitude;
+        var distanceDestination = member.distanceDestination;
 
+        if (i == 0) lowestDistance = distanceDestination;
+
+        var memberLatLng = LatLng(currentLatitude, currentLongitude);
+        var memberMarker = createMarker(iconMember, memberId, memberLatLng, member.name);
+
+        memberDistances.add(member);
+        memberSpeeds.add(member);
+
+        setState(() {
+          _markers[MarkerId(memberId)] = memberMarker;
+          _members[memberId] = member;
+
+          if (memberId == _userId){
+            _currLatLng = LatLng(currentLatitude, currentLongitude);
+            var userMarker = createMarker(iconUser, _userId, _currLatLng, 'Anda');
+
+            _selectedMember = _members[_userId];
+            _selectedUser = _members[_userId];
+            _markers[MarkerId(_userId)] = userMarker;
+            _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
+          }
+        });
+
+        if (distanceDestination <= lowestDistance){
+          lowestDistance = distanceDestination;
+          _selectedHeader = _members[memberId];
+        }
+
+        _queryUser.doc(memberId).snapshots().listen((_snapshotUser) {
+          if (_snapshotUser.exists){
+            var userMember = UserVO.fromJson(_snapshotUser.data());
+            var memberId = member.id;
+            member.name = userMember.name;
             setState(() {
-              _currMarker = Marker(
-                icon: icon,
-                markerId: MarkerId(_userId),
-                position: _currLatLng,
-                infoWindow: InfoWindow(
-                  title: 'Anda',
-                ),
-                onTap: (){
-                  setState(() {
-                    _selectedMember = _members[_userId];
-                  });
-                },
-              );
-
-              _markers[MarkerId(_userId)] = _currMarker;
-              _googleMapController.moveCamera(CameraUpdate.newLatLng(_currLatLng));
+              _members[memberId] = member;
+              if (_selectedMember != null){
+                if (_selectedMember.id == memberId){
+                  _selectedMember = _members[memberId];
+                  var memberLatLng = LatLng(_selectedMember.latitude, _selectedMember.longitude);
+                  var selectMarker = createMarker(iconUser, memberId, memberLatLng, _selectedMember.name);
+                  _markers[MarkerId(memberId)] = selectMarker;
+                }
+              }
+              if (_selectedUser != null){
+                if (_selectedUser.id == memberId){
+                  _selectedUser = _members[_userId];
+                  var memberLatLng = LatLng(_selectedUser.latitude, _selectedUser.longitude);
+                  var userMarker = createMarker(iconUser, memberId, memberLatLng, 'Anda');
+                  _markers[MarkerId(memberId)] = userMarker;
+                }
+              }
+              if (_selectedHeader != null){
+                if (_selectedHeader.id == memberId){
+                  _selectedHeader = _members[memberId];
+                  var memberLatLng = LatLng(_selectedHeader.latitude, _selectedHeader.longitude);
+                  var headerMarker = createMarker(iconHeader, memberId, memberLatLng, _selectedHeader.name);
+                  _markers[MarkerId(memberId)] = headerMarker;
+                }
+              }
             });
+          }
+        });
+      }
 
-            _updatePositions();
-          });
+      if (_selectedHeader != null){
+        setState(() {
+          var memberId = _selectedHeader.id;
+          var currentLatitude = _selectedHeader.latitude;
+          var currentLongitude = _selectedHeader.longitude;
+          var memberLatLng = LatLng(currentLatitude, currentLongitude);
+          var headerMarker = createMarker(iconHeader, memberId, memberLatLng, _selectedHeader.name);
+          _markers[MarkerId(_selectedHeader.id)] = headerMarker;
+        });
+      }
+
+      memberDistances.sort((x, y) => x.distanceDestination.compareTo(y.distanceDestination));
+      memberSpeeds.sort((x, y) => x.speed.compareTo(y.speed));
+
+      var vd = 0.01;
+      var vs = 0.15;
+
+      int memberCount = memberDistances.length;
+      for (var i = 0; i < memberCount; i++) {
+        var currId = memberDistances[i].id;
+        var headerId = memberDistances[0].id;
+
+        double frontDistance = memberDistances[0].distanceDestination / 1000;
+        double backDistance = 0;
+        double currDistance = memberDistances[i].distanceDestination / 1000;
+        double currSpeed = memberDistances[i].speed;
+        double currRangeFront = 0.0;
+        double currRangeBack = 0.0;
+        double safeSpeed = currSpeed * vd * memberCount;
+        double safeRange = currSpeed * vs;
+
+        if (i > 0){
+          frontDistance = memberDistances[i - 1].distanceDestination / 1000;
+          currRangeFront = currDistance - frontDistance;
+        }
+
+        if (i < (memberCount - 1)){
+          backDistance = memberDistances[i + 1].distanceDestination / 1000;
+          currRangeBack = backDistance - currDistance;
+        }
+
+        print("index: $i, currRangeFront: $currRangeFront,"
+            " currRangeBack: $currRangeBack,"
+            " safeSpeed: $safeSpeed, safeRange: $safeRange"
+        );
+
+        if (headerId == _userId){
+          if (currRangeBack > safeSpeed){
+            print("Kurangi Kecepatan");
+            var newVoiceText = 'Mohon kurangi kecepatan. '
+                'Anda melampaui sejauh ${(currRangeBack * 1000).ceil()} meter.'
+                'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
+            _speak(newVoiceText);
+          }
+        } else if (currId == _userId){
+          if (i > 0){
+            //Peringatan tertinggal
+            if (currRangeFront > safeRange){
+              print("Tambah Kecepatan");
+              var newVoiceText = 'Mohon tambah kecepatan. '
+                  'Anda tertinggal sejauh ${(currRangeFront * 1000).ceil()} meter.'
+                  'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
+              _speak(newVoiceText);
+            }
+            if (currRangeFront > safeSpeed){
+              print("Tambah Kecepatan");
+              var newVoiceText = 'Mohon tambah kecepatan. '
+                  'Anda tertinggal sejauh ${(currRangeFront * 1000).ceil()} meter.'
+                  'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
+              _speak(newVoiceText);
+            }
+          } else {
+            //Peringatan kurangi kecepatan
+            if (currRangeBack > safeRange){
+              print("Kurangi Kecepatan");
+              var newVoiceText = 'Mohon kurangi kecepatan. '
+                  'Anda melampaui sejauh ${(currRangeBack * 1000).ceil()} meter.'
+                  'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
+              _speak(newVoiceText);
+            }
+            if (currRangeBack > safeSpeed){
+              print("Kurangi Kecepatan");
+              var newVoiceText = 'Mohon kurangi kecepatan. '
+                  'Anda melampaui sejauh ${(currRangeBack * 1000).ceil()} meter.'
+                  'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
+              _speak(newVoiceText);
+            }
+          }
         }
       }
+      //distances.sort();
+      //speeds.sort();
 
     });
   }
 
-  void _updatePositions() async {
-    final iconMember = await BitmapDescriptor.fromAssetImage(
-        ImageConfiguration(size: Size(48.0, 48.0,)), 'assets/image/black_bike.png');
-
-    if (_group != null){
-      _queryGroup.doc(_group.code).collection('members').snapshots().listen((_snapshotGroup) {
-        for (var i = 0; i < _snapshotGroup.docs.length; i++){
-          var element = _snapshotGroup.docs[i];
-          var member = MemberVO.fromJson(element.data());
-          var memberId = member.id;
-
-          if (memberId != _userId){
-
-            PositionVO firstPosition;
-            PositionVO lastPosition;
-
-            _queryUser.doc(memberId).snapshots().listen((_snapshotUser) {
-              if (_snapshotUser.exists){
-                var userMember = UserVO.fromJson(_snapshotUser.data());
-                member.id = memberId;
-                member.name = userMember.name;
-
-                _queryLives.doc(_group.code).collection('members')
-                    .doc(memberId).collection('positions')
-                    .doc('first').snapshots().listen((element) {
-                  firstPosition = PositionVO.fromJson(element.data());
-
-                  _queryLives.doc(_group.code).collection('members')
-                      .doc(memberId).collection('positions')
-                      .doc('last').snapshots().listen((element) {
-                    lastPosition = PositionVO.fromJson(element.data());
-                    var memberLatLng = LatLng(lastPosition.latitude, lastPosition.longitude);
-
-                    var distanceMember = Geolocator.distanceBetween(
-                        _lastLatitude, _lastLongitude, lastPosition.latitude, lastPosition.longitude);
-
-                    var distanceDest = Geolocator.distanceBetween(
-                        _destLatLng.latitude, _destLatLng.longitude, lastPosition.latitude, lastPosition.longitude);
-
-                    member.distanceMember = distanceMember;
-                    member.distanceDestination = distanceDest;
-                    member.speed = 0.0;
-
-                    var firstCreated = int.parse(firstPosition.created);
-                    var lastCreated = int.parse(lastPosition.created);
-                    var balanceMilli = (lastCreated - firstCreated);
-                    var balance = balanceMilli / 1000;
-
-                    var firstLat = firstPosition.latitude;
-                    var firstLon = firstPosition.longitude;
-
-                    var lastLat = lastPosition.latitude;
-                    var lastLon = lastPosition.longitude;
-
-                    var distanceMeter = Geolocator.distanceBetween(firstLat, firstLon, lastLat, lastLon);
-                    if (distanceMeter > 0){
-                      if (balance > 0){
-                        var time = balance / 3600.0;
-                        var distanceKM = distanceMeter / 1000.0;
-                        var speed = distanceKM / time;
-                        member.speed = speed;
-                      }
-                    }
-
-                    var memberMarker = Marker(
-                      icon: iconMember,
-                      markerId: MarkerId(memberId),
-                      position: memberLatLng,
-                      infoWindow: InfoWindow(
-                        title: '${userMember.name}',
-                      ),
-                      onTap: (){
-                        setState(() {
-                          _selectedMember = _members[memberId];
-                        });
-                      },
-                    );
-
-                    setState(() {
-                      _markers[MarkerId(memberId)] = memberMarker;
-                      _members[memberId] = member;
-
-                      _members.forEach((key, value) {
-                        if (value.id != _userId){
-                          if (value.distanceMember > 0){
-                            if (_minDistance > value.distanceMember){
-                              _minDistance = value.distanceMember;
-                            }
-                            print(_minDistance);
-                          }
-                        }
-                      });
-                    });
-
-                    _queryLives.doc(_group.code).collection('members')
-                        .doc(_userId).collection('positions')
-                        .doc('first').get().then((value){
-                      if (value.exists){
-                        firstPosition = PositionVO.fromJson(value.data());
-                        var firstCreated = int.parse(firstPosition.created);
-                        var lastCreated = int.parse(lastPosition.created);
-                        var balanceMilli = (lastCreated - firstCreated);
-                        var balance = balanceMilli / 1000;
-
-                        var firstLat = firstPosition.latitude;
-                        var firstLon = firstPosition.longitude;
-
-                        var lastLat = lastPosition.latitude;
-                        var lastLon = lastPosition.longitude;
-
-                        var distanceDest = Geolocator.distanceBetween(
-                            _destLatLng.latitude, _destLatLng.longitude, lastPosition.latitude, lastPosition.longitude);
-
-                        var distanceMeter = Geolocator.distanceBetween(firstLat, firstLon, lastLat, lastLon);
-                        if (distanceMeter > 0){
-                          if (balance > 0){
-                            var time = balance / 3600.0;
-                            var distanceKM = distanceMeter / 1000.0;
-                            setState(() {
-                              _members[_userId].distanceMember = 0.0;
-                              _members[_userId].distanceDestination = distanceDest;
-                              _members[_userId].speed = distanceKM / time;
-                              _speed = distanceKM / time;
-                            });
-
-                            if (_minDistance < 1000000000.0){
-                              if (_speed.ceil() <= 80 && _speed.ceil() > 40){
-                                if (_minDistance.ceil() >= 3000){
-                                  _newVoiceText = 'Anda tertinggal sejauh ${_minDistance.ceil()} meter. '
-                                      'Kecepatan Anda ${_speed.ceil()} Kilometer per Jam';
-                                  _speak(_newVoiceText);
-                                }
-                              } else if (_speed.ceil() <= 40) {
-                                if (_minDistance.ceil() >= 500){
-                                  _newVoiceText = 'Anda tertinggal sejauh ${_minDistance.ceil()} meter. '
-                                      'Kecepatan Anda ${_speed.ceil()} Kilometer per Jam';
-                                  _speak(_newVoiceText);
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    });
-                  });
-                });
-              }
-            });
+  Marker createMarker(icon, id, latLng, title){
+    return Marker(
+      icon: icon,
+      markerId: MarkerId(id),
+      position: latLng,
+      infoWindow: InfoWindow(
+        title: title,
+      ),
+      onTap: (){
+        setState(() {
+          _selectedMember = _members[id];
+          if (_selectedUser != null){
+            double destUser = _selectedUser.distanceDestination;
+            double destMember = _selectedMember.distanceDestination;
+            var distance = destMember - destUser;
+            if (distance < 0){
+              distance = distance * -1;
+            }
+            _members[id].distanceMember = distance;
+            _selectedMember = _members[id];
           }
-        }
-      });
-    }
+        });
+      },
+    );
   }
 
   Future _getLanguages() async {
@@ -531,7 +748,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     _getLanguages();
 
     //if (isAndroid) {
-      _getEngines();
+    _getEngines();
     //}
 
     flutterTts.setStartHandler(() {
@@ -580,7 +797,6 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   @override
   Widget build(BuildContext context) {
     _initAction(context);
-    _getUser();
     _initMenu();
 
     Widget _appBar = SliverAppBar(
@@ -630,7 +846,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Expanded(
-              child: GoogleMap( 
+              child: GoogleMap(
                 onMapCreated: _initMap,
                 compassEnabled: true,
                 rotateGesturesEnabled: true,

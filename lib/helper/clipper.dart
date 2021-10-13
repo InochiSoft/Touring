@@ -235,9 +235,9 @@ class CurveBottomCircleThree extends CustomClipper<Path> {
 
 class SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   SliverAppBarDelegate({
-    this.minHeight,
-    this.maxHeight,
-    this.child,
+     this.minHeight,
+     this.maxHeight,
+     this.child,
   });
 
   final double minHeight;

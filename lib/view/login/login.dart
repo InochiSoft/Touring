@@ -1,7 +1,8 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:touring/constant/color.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:touring/constant/constant.dart';
@@ -9,6 +10,7 @@ import 'package:touring/helper/clipper.dart';
 import 'package:touring/model/config/user.dart';
 import 'package:touring/model/vo/user.dart';
 import 'package:touring/view/home/home.dart';
+import 'package:flutter_svg/svg.dart';
 
 class LoginPage extends StatefulWidget {
   LoginPage({Key key}) : super(key: key);
@@ -105,10 +107,10 @@ class LoginPageState extends State<LoginPage> {
       width: 44.0,
       height: 44.0,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: kColorPrimary,
         borderRadius: BorderRadius.all(Radius.circular(20.0)),
         border: Border.all(
-          color: kColorBorder,
+          color: kColorPrimary,
           width: 1,
           style: BorderStyle.solid,
         ),
@@ -119,7 +121,7 @@ class LoginPageState extends State<LoginPage> {
           height: 30.0,
           child: CircularProgressIndicator(
             strokeWidth: 4.0,
-            valueColor : AlwaysStoppedAnimation(Colors.black45),
+            valueColor : AlwaysStoppedAnimation(kColorPrimary),
           ),
         ),
       ),
@@ -131,26 +133,33 @@ class LoginPageState extends State<LoginPage> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(5.0,),),
         ),
-        color: kColorPrimary,
+        color: kColorsGreen,
         onPressed: _handleSignIn,
         child: Center(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Icon(Icons.account_circle,
-                color: Colors.black87,
+                color: Colors.black45,
               ),
               SizedBox(width: 12,),
-              Text('Masuk dengan Akun Google',
+              Text('Masuk',
                 style: TextStyle(
                   fontSize: 18.0,
-                  color: Colors.black87,
+                  color: Colors.black45,
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+
+    final assetName = 'assets/image/destinations.svg';
+    final Widget cover = SvgPicture.asset(
+      assetName,
+      width: MediaQuery.of(context).size.width,
+      semanticsLabel: 'Destinations',
     );
 
     Widget _form = Center(
@@ -166,21 +175,38 @@ class LoginPageState extends State<LoginPage> {
           children: <Widget>[
             Container(
               margin: EdgeInsets.only(bottom: 20,),
-              child: Icon(
-                Icons.security,
-                size: 128,
-                color: Colors.cyan[800],
-              ),
+              child: cover,
             ),
             SizedBox(height: 10.0,),
-            Text('MASUK',
+            Text(kAppWelcome,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: kColorText,
+                color: kColorsIndigo800,
                 fontSize: 24.0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 5.0,),
+            Text(kAppDescription,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: kColorsBlueGrey800,
+                fontSize: 16.0,
               ),
             ),
             SizedBox(height: 20.0,),
+            Divider(
+              color: kColorsGreen800,
+              height: 1.0,
+            ),
+            SizedBox(height: 5.0,),
+            Text(kLoginInstruction,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: kColorsBlueGrey800,
+                fontSize: 16.0,
+              ),
+            ),
             Container(
               padding: EdgeInsets.symmetric(
                 vertical: 10,

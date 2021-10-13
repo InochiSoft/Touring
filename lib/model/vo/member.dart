@@ -16,13 +16,17 @@ class MemberVO {
     this.longitude,
     this.distanceMember,
     this.distanceDestination,
+    this.speed,
   });
 
   factory MemberVO.fromJson(Map<String, dynamic> json) {
     return MemberVO(
-      id: json.containsKey('id') ? json['id'].toString() : '0',
+      id: json.containsKey('id') ? json['id'].toString() : '',
       latitude: json.containsKey('latitude') ? json['latitude'] : 0.0,
       longitude: json.containsKey('longitude') ? json['longitude'] : 0.0,
+      distanceMember: json.containsKey('distanceMember') ? json['distanceMember'] : 0.0,
+      distanceDestination: json.containsKey('distanceDestination') ? json['distanceDestination'] : 0.0,
+      speed: json.containsKey('speed') ? json['speed'] : 0.0,
     );
   }
 
@@ -30,6 +34,9 @@ class MemberVO {
     'id': id ?? '',
     'latitude': latitude ?? 0.0,
     'longitude': longitude ?? 0.0,
+    'distanceMember': distanceMember ?? 0.0,
+    'distanceDestination': distanceDestination ?? 0.0,
+    'speed': speed ?? 0.0,
   };
 
   @override
