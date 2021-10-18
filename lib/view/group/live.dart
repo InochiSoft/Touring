@@ -150,21 +150,25 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   }
 
   void _toggleListening() {
-    if (_positionStreamSubscription == null) {
-      final positionStream = _geolocatorPlatform.getPositionStream(
+    final positionStream = _geolocatorPlatform.getPositionStream(
         timeInterval: kTimeInterval
-      );
-      _positionStreamSubscription = positionStream.handleError((error) {
-        _positionStreamSubscription.cancel();
-        _positionStreamSubscription = null;
-      }).listen((position){
+    );
+    _positionStreamSubscription = positionStream.handleError((error) {
+      _positionStreamSubscription.cancel();
+      _positionStreamSubscription = null;
+    }).listen((position){
+      setState(() {
         _updatePositionList(
             _PositionItemType.position,
             position.toString(),
             position
         );
       });
-      _positionStreamSubscription.pause();
+    });
+
+    /*
+    if (_positionStreamSubscription == null) {
+      //_positionStreamSubscription.pause();
     }
 
     setState(() {
@@ -187,6 +191,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
           null
       );
     });
+    */
   }
 
   void _updatePositionList(_PositionItemType type, String displayValue, Position position) {
@@ -194,10 +199,8 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     _positionItems.add(_PositionItem(type, displayValue, position));
     if (type == _PositionItemType.position){
       if (position != null){
-        setState(() {
-          _updateLocation(position);
-          _updatePositions();
-        });
+        _updateLocation(position);
+        _updatePositions();
       }
     }
   }
@@ -211,9 +214,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
 
     final position = await _geolocatorPlatform.getCurrentPosition();
 
-    //_toggleServiceStatusStream();
     _toggleListening();
-    //_updatePositions();
 
     _updatePositionList(
         _PositionItemType.position,
@@ -557,6 +558,11 @@ class LiveGroupPageState extends State<LiveGroupPage> {
             member.name = userMember.name;
             setState(() {
               _members[memberId] = member;
+
+              var memberLatLng = LatLng(_members[memberId].latitude, _members[memberId].longitude);
+              var anyMarker = createMarker(iconUser, memberId, memberLatLng, _members[memberId].name);
+              _markers[MarkerId(memberId)] = anyMarker;
+
               if (_selectedMember != null){
                 if (_selectedMember.id == memberId){
                   _selectedMember = _members[memberId];
