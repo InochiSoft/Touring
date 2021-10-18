@@ -158,7 +158,6 @@ class LiveGroupPageState extends State<LiveGroupPage> {
         _positionStreamSubscription.cancel();
         _positionStreamSubscription = null;
       }).listen((position){
-        print('getPositionStream');
         _updatePositionList(
             _PositionItemType.position,
             position.toString(),
@@ -195,7 +194,10 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     _positionItems.add(_PositionItem(type, displayValue, position));
     if (type == _PositionItemType.position){
       if (position != null){
-        _updateLocation(position);
+        setState(() {
+          _updateLocation(position);
+          _updatePositions();
+        });
       }
     }
   }
@@ -479,9 +481,8 @@ class LiveGroupPageState extends State<LiveGroupPage> {
           'longitude' : position.longitude,
           'distanceDestination' : distanceDest,
           'speed' : speed,
-        }).then((value) {
-          _updatePositions();
         });
+
       });
     }
   }
