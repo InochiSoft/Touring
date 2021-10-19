@@ -12,6 +12,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:share/share.dart';
 import 'package:toast/toast.dart';
 import 'package:touring/constant/color.dart';
+import 'package:touring/constant/constant.dart';
 import 'package:touring/layout/layout.dart';
 import 'package:touring/layout/model/vo/screen.dart';
 import 'package:touring/model/config/user.dart';
@@ -31,16 +32,15 @@ class InfoGroupPage extends StatefulWidget {
 class InfoGroupPageState extends State<InfoGroupPage> {
   final GoogleSignIn googleSignIn = GoogleSignIn();
   final FirebaseAuth firebaseAuth = FirebaseAuth.instance;
+  final GeolocatorPlatform _geolocatorPlatform = GeolocatorPlatform.instance;
 
   List<Widget> _actionList = [];
 
   UserVO _userLogin;
-  String _userName = '';
   String _userId = '';
   GroupVO _group;
   bool _isRefresh = false;
 
-  final UserConfig _userCfg = UserConfig();
   CollectionReference _queryUser;
   CollectionReference _queryGroup;
 
@@ -54,8 +54,8 @@ class InfoGroupPageState extends State<InfoGroupPage> {
   @override
   void initState() {
     super.initState();
-    _queryUser = FirebaseFirestore.instance.collection('users');
-    _queryGroup = FirebaseFirestore.instance.collection('groups');
+    _queryUser = FirebaseFirestore.instance.collection(kUsers);
+    _queryGroup = FirebaseFirestore.instance.collection(kGroups);
     _initAction();
     _getUser();
     _getGroupInfo();
@@ -71,7 +71,6 @@ class InfoGroupPageState extends State<InfoGroupPage> {
     _userLogin = await _userCfg.getUser();
     setState(() {
       if (_userLogin != null){
-        _userName = _userLogin.name;
         _userId = _userLogin.uid;
       }
     });
@@ -88,7 +87,9 @@ class InfoGroupPageState extends State<InfoGroupPage> {
         _textLatitudeController.text = _group.latitude.toString();
         _textLongitudeController.text = _group.longitude.toString();
 
-        _queryGroup.doc(_group.code).collection('members').snapshots().listen((_snapshotGroup) {
+        _queryGroup.doc(_group.code).collection(kMembers)
+            .snapshots()
+            .listen((_snapshotGroup) {
           var _tempDistance = 0.0;
           MemberVO _selectmember;
           for (var i = 0; i < _snapshotGroup.docs.length; i++){
@@ -123,12 +124,59 @@ class InfoGroupPageState extends State<InfoGroupPage> {
   }
 
   void _exitGroup(){
-    _queryUser.doc(_userId).collection('groups').doc(_group.code).delete().then((value){
-      _queryGroup.doc(_group.code).collection('members').doc(_userId).delete().then((value){
+    _queryUser.doc(_userId).collection(kGroups).doc(_group.code).delete().then((value){
+      _queryGroup.doc(_group.code).collection(kMembers).doc(_userId).delete().then((value){
         _isRefresh = true;
         Navigator.pop(context, _isRefresh);
       });
     });
+  }
+
+  Future<bool> _handlePermission() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await _geolocatorPlatform.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      Toast.show(kLocationServicesDisabledMessage,
+        this.context,
+        duration: Toast.LENGTH_LONG,
+        gravity: Toast.BOTTOM,
+      );
+
+      return false;
+    }
+
+    permission = await _geolocatorPlatform.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await _geolocatorPlatform.requestPermission();
+      if (permission == LocationPermission.denied) {
+        Toast.show(kPermissionDeniedMessage,
+          this.context,
+          duration: Toast.LENGTH_LONG,
+          gravity: Toast.BOTTOM,
+        );
+
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      Toast.show(kPermissionDeniedForeverMessage,
+        this.context,
+        duration: Toast.LENGTH_LONG,
+        gravity: Toast.BOTTOM,
+      );
+      return false;
+    }
+
+    Toast.show(kPermissionGrantedMessage,
+      this.context,
+      duration: Toast.LENGTH_LONG,
+      gravity: Toast.BOTTOM,
+    );
+
+    return true;
   }
 
   void _initAction(){
@@ -138,13 +186,23 @@ class InfoGroupPageState extends State<InfoGroupPage> {
         icon: Icon(Icons.live_tv),
         tooltip: 'Live',
         onPressed: () {
-          Navigator.pop(context);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => LiveGroupPage(group: _group,),
-            ),
-          );
+          _handlePermission().then((hasPermission){
+            if (hasPermission) {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => LiveGroupPage(group: _group,),
+                ),
+              );
+            } else {
+              Toast.show(kLocationServicesNeedActivated,
+                this.context,
+                duration: Toast.LENGTH_LONG,
+                gravity: Toast.BOTTOM,
+              );
+            }
+          });
         },
       ),
     ];

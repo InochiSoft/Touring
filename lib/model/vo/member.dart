@@ -5,6 +5,10 @@ class MemberVO {
   String name;
   double latitude;
   double longitude;
+  double currentLatitude;
+  double currentLongitude;
+  double lastLatitude;
+  double lastLongitude;
   double distanceMember;
   double distanceDestination;
   double speed;
@@ -14,6 +18,10 @@ class MemberVO {
     this.name,
     this.latitude,
     this.longitude,
+    this.currentLatitude,
+    this.currentLongitude,
+    this.lastLatitude,
+    this.lastLongitude,
     this.distanceMember,
     this.distanceDestination,
     this.speed,
@@ -24,9 +32,6 @@ class MemberVO {
       id: json.containsKey('id') ? json['id'].toString() : '',
       latitude: json.containsKey('latitude') ? json['latitude'] : 0.0,
       longitude: json.containsKey('longitude') ? json['longitude'] : 0.0,
-      distanceMember: json.containsKey('distanceMember') ? json['distanceMember'] : 0.0,
-      distanceDestination: json.containsKey('distanceDestination') ? json['distanceDestination'] : 0.0,
-      speed: json.containsKey('speed') ? json['speed'] : 0.0,
     );
   }
 
@@ -34,9 +39,6 @@ class MemberVO {
     'id': id ?? '',
     'latitude': latitude ?? 0.0,
     'longitude': longitude ?? 0.0,
-    'distanceMember': distanceMember ?? 0.0,
-    'distanceDestination': distanceDestination ?? 0.0,
-    'speed': speed ?? 0.0,
   };
 
   @override
@@ -44,4 +46,5 @@ class MemberVO {
     var jsonData = json.encode(toJson());
     return jsonData;
   }
+
 }

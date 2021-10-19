@@ -12,7 +12,14 @@ const String kSharedUser = 'Shared User';
 const String kKeyUser = 'user';
 const String kKeyRemember = 'remember';
 
-const String kLocationServicesDisabledMessage = 'Layanan lokasi tidak aktif.';
-const String kPermissionDeniedMessage = 'Izin layanan lokasi tidak diberikan.';
-const String kPermissionDeniedForeverMessage = 'Izin layanan lokasi tidak diberikan selamanya.';
-const String kPermissionGrantedMessage = 'Izin layanan lokasi diberikan.';
+const String kUsers = 'users';
+const String kMembers = 'members';
+const String kGroups = 'groups';
+const String kLives = 'lives';
+const String kRecords = 'records';
+
+const String kLocationServicesDisabledMessage = 'Layanan lokasi tidak aktif';
+const String kPermissionDeniedMessage = 'Izin layanan lokasi tidak diberikan';
+const String kPermissionDeniedForeverMessage = 'Izin layanan lokasi tidak diberikan selamanya';
+const String kPermissionGrantedMessage = 'Izin layanan lokasi diberikan';
+const String kLocationServicesNeedActivated = 'Aktifkan layanan lokasi (GPS)';

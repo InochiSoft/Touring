@@ -249,8 +249,6 @@ class CreateGroupPageState extends State<CreateGroupPage> {
                           id: _userLogin.uid,
                           latitude: _currLatLng.latitude,
                           longitude: _currLatLng.longitude,
-                          distanceMember: 0.0,
-                          distanceDestination: distanceDest,
                         );
 
                         _queryGroup.doc(code).collection('members')

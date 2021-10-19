@@ -2,19 +2,23 @@ import 'dart:convert';
 
 class PositionVO {
   int lastTime;
-  double lastLatitude;
-  double lastLongitude;
   int currentTime;
   double currentLatitude;
   double currentLongitude;
+  double lastLatitude;
+  double lastLongitude;
+  double distanceDestination;
+  double speed;
 
   PositionVO({
     this.lastTime,
-    this.lastLatitude,
-    this.lastLongitude,
     this.currentTime,
     this.currentLatitude,
     this.currentLongitude,
+    this.lastLatitude,
+    this.lastLongitude,
+    this.distanceDestination,
+    this.speed,
   });
 
   factory PositionVO.fromJson(Map<String, dynamic> json) {
@@ -25,6 +29,8 @@ class PositionVO {
       currentTime: json.containsKey('currentTime') ? json['currentTime'] : 0,
       currentLatitude: json.containsKey('currentLatitude') ? json['currentLatitude'] : 0.0,
       currentLongitude: json.containsKey('currentLongitude') ? json['currentLongitude'] : 0.0,
+      distanceDestination: json.containsKey('distanceDestination') ? json['distanceDestination'] : 0.0,
+      speed: json.containsKey('speed') ? json['speed'] : 0.0,
     );
   }
 
@@ -35,6 +41,8 @@ class PositionVO {
     'currentTime': currentTime ?? 0,
     'currentLatitude': currentLatitude ?? 0.0,
     'currentLongitude': currentLongitude ?? 0.0,
+    'distanceDestination': distanceDestination ?? 0.0,
+    'speed': speed ?? 0.0,
   };
 
   @override
