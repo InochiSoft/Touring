@@ -17,9 +17,18 @@ const String kMembers = 'members';
 const String kGroups = 'groups';
 const String kLives = 'lives';
 const String kRecords = 'records';
+const String kBroadcasts = 'broadcasts';
+const String kMessages = 'messages';
+const String kReads = 'reads';
 
 const String kLocationServicesDisabledMessage = 'Layanan lokasi tidak aktif';
 const String kPermissionDeniedMessage = 'Izin layanan lokasi tidak diberikan';
 const String kPermissionDeniedForeverMessage = 'Izin layanan lokasi tidak diberikan selamanya';
 const String kPermissionGrantedMessage = 'Izin layanan lokasi diberikan';
 const String kLocationServicesNeedActivated = 'Aktifkan layanan lokasi (GPS)';
+
+const String kMessage0 = 'Pilih pesan broadcast';
+const String kMessage1 = 'Ban saya bocor!';
+const String kMessage2 = 'Saya kehabisan bensin!';
+const String kMessage3 = 'Kendaraan saya mogok!';
+const String kMessage4 = 'Saya kecelakaan!';

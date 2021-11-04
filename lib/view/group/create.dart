@@ -241,10 +241,6 @@ class CreateGroupPageState extends State<CreateGroupPage> {
                       );
                     } else {
                       _queryGroup.doc(code).set(groupVO.toJson()).then((value){
-                        var distanceDest = Geolocator.distanceBetween(
-                            _destLatLng.latitude, _destLatLng.longitude,
-                            _currLatLng.latitude, _currLatLng.longitude);
-
                         MemberVO member = MemberVO(
                           id: _userLogin.uid,
                           latitude: _currLatLng.latitude,

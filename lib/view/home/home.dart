@@ -106,14 +106,14 @@ class HomePageState extends State<HomePage> {
   void _getListGroup() async {
     if (_userId.isNotEmpty){
       _groupIndexes.clear();
-      _queryUser.doc(_userId).collection('groups').snapshots().listen((_snapshotUser) {
-        //setState(() {
+      _queryUser.doc(_userId).collection(kGroups)
+          .snapshots()
+          .listen((_snapshotUser) {
         _groupIndexes.clear();
 
         if (_snapshotUser.docs.isNotEmpty){
           _listMode = 1;
         }
-        //});
 
         for (var i = 0; i < _snapshotUser.docs.length; i++){
           var element = _snapshotUser.docs[i];

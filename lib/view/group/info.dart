@@ -87,11 +87,12 @@ class InfoGroupPageState extends State<InfoGroupPage> {
         _textLatitudeController.text = _group.latitude.toString();
         _textLongitudeController.text = _group.longitude.toString();
 
-        _queryGroup.doc(_group.code).collection(kMembers)
-            .snapshots()
-            .listen((_snapshotGroup) {
+
+        _queryGroup.doc(_group.code).collection(kMembers).get().then((_snapshotGroup){
+
           var _tempDistance = 0.0;
           MemberVO _selectmember;
+
           for (var i = 0; i < _snapshotGroup.docs.length; i++){
             var element = _snapshotGroup.docs[i];
             var member = MemberVO.fromJson(element.data());
@@ -109,16 +110,73 @@ class InfoGroupPageState extends State<InfoGroupPage> {
             }
             _tempDistance = distance;
           }
+
           if (_selectmember != null){
-            _queryUser.doc(_selectmember.id).snapshots().listen((_snapshotUser) {
-              if (_snapshotUser.exists){
-                var leader = UserVO.fromJson(_snapshotUser.data());
-                _textLeaderController.text = leader.name;
-              }
-            });
-            print(_selectmember.id);
+            if (_selectmember.id.isNotEmpty){
+              _queryUser.doc(_selectmember.id).get().then((_snapshotUser){
+                if (_snapshotUser.exists){
+                  var leader = UserVO.fromJson(_snapshotUser.data());
+                  _textLeaderController.text = leader.name;
+                }
+              });
+              /*
+              _queryUser.doc(_selectmember.id).snapshots().listen((_snapshotUser) {
+                if (_snapshotUser.exists){
+                  var leader = UserVO.fromJson(_snapshotUser.data());
+                  _textLeaderController.text = leader.name;
+                }
+              });
+              print(_selectmember.id);
+              */
+            }
           }
         });
+        /*
+        _queryGroup.doc(_group.code).collection(kMembers)
+            .snapshots()
+            .listen((_snapshotGroup) {
+          var _tempDistance = 0.0;
+          MemberVO _selectmember;
+
+          for (var i = 0; i < _snapshotGroup.docs.length; i++){
+            var element = _snapshotGroup.docs[i];
+            var member = MemberVO.fromJson(element.data());
+            var latitude = member.latitude;
+            var longitude = member.longitude;
+            var distance = Geolocator.distanceBetween(_group.latitude, _group.longitude, latitude, longitude);
+            member.distanceDestination = distance;
+
+            if (i == 0){
+              _tempDistance  = distance;
+              _selectmember = member;
+            }
+            if (distance < _tempDistance){
+              _selectmember = member;
+            }
+            _tempDistance = distance;
+          }
+
+          if (_selectmember != null){
+            if (_selectmember.id.isNotEmpty){
+              _queryUser.doc(_selectmember.id).get().then((_snapshotUser){
+                if (_snapshotUser.exists){
+                  var leader = UserVO.fromJson(_snapshotUser.data());
+                  _textLeaderController.text = leader.name;
+                }
+              });
+              *//*
+              _queryUser.doc(_selectmember.id).snapshots().listen((_snapshotUser) {
+                if (_snapshotUser.exists){
+                  var leader = UserVO.fromJson(_snapshotUser.data());
+                  _textLeaderController.text = leader.name;
+                }
+              });
+              print(_selectmember.id);
+              *//*
+            }
+          }
+        });
+        */
       }
     });
   }

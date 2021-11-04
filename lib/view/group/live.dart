@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -16,6 +17,7 @@ import 'package:touring/constant/constant.dart';
 import 'package:touring/layout/layout.dart';
 import 'package:touring/layout/model/vo/screen.dart';
 import 'package:touring/model/config/user.dart';
+import 'package:touring/model/vo/broadcast.dart';
 import 'package:touring/model/vo/group.dart';
 import 'package:touring/model/vo/member.dart';
 import 'package:touring/model/vo/menu.dart';
@@ -53,6 +55,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   MemberVO _selectedHeader;
 
   String _userId = '';
+  bool _isSpeak = false;
 
   CollectionReference _queryUsers;
   CollectionReference _queryGroups;
@@ -65,6 +68,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
   double rate = 0.5;
   bool isCurrentLanguageInstalled = false;
 
+  Position _curPosition;
   FlutterTts flutterTts;
   /*
   var _currPosition = PositionVO();
@@ -93,8 +97,31 @@ class LiveGroupPageState extends State<LiveGroupPage> {
       _positionStreamSubscription.cancel();
       _positionStreamSubscription = null;
     }
-    flutterTts.stop();
+
+    try {
+      if (flutterTts != null){
+        flutterTts.stop();
+      }
+    } catch (e) {
+      print(e);
+    }
+
     super.dispose();
+  }
+
+  void _initAction(context){
+    _actionList.clear();
+    _actionList = [
+      IconButton(
+        icon: Icon(Icons.warning_outlined,
+          color: Colors.red,
+        ),
+        tooltip: 'Broadcast',
+        onPressed: () {
+          _showBroadcastDialog(context);
+        },
+      ),
+    ];
   }
 
   void _initIcons() async {
@@ -112,15 +139,6 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     if (_userLogin != null){
       _userId = _userLogin.uid;
       if (_group != null) {
-        /*
-        var time = DateTime.now().millisecondsSinceEpoch;
-        _lastPosition.lastTime = time;
-        _lastPosition.lastLatitude = 0.0;
-        _lastPosition.lastLongitude = 0.0;
-        _lastPosition.currentTime = time;
-        _lastPosition.currentLatitude = 0.0;
-        _lastPosition.currentLongitude = 0.0;
-        */
         _queryUsers = FirebaseFirestore.instance.collection(kUsers);
         _queryLives = FirebaseFirestore.instance.collection(kLives);
         _queryGroups = FirebaseFirestore.instance.collection(kGroups);
@@ -171,6 +189,8 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     currPosition.currentTime = currentTime;
     currPosition.currentLatitude = currentLatitude;
     currPosition.currentLongitude = currentLongitude;
+
+    _listenBroadcast(this.context, position);
 
     _queryGroups.doc(_group.code).collection(kMembers)
         .doc(_userId).update(currPosition.toJson()).then((value){
@@ -262,19 +282,6 @@ class LiveGroupPageState extends State<LiveGroupPage> {
 
   }
 
-  void _initAction(context){
-    _actionList.clear();
-    _actionList = [
-      IconButton(
-        icon: Icon(Icons.logout),
-        tooltip: 'Keluar',
-        onPressed: () {
-
-        },
-      ),
-    ];
-  }
-
   Future<void> _initMap(GoogleMapController controller) async {
     _googleMapController = controller;
     if (_group != null){
@@ -295,16 +302,12 @@ class LiveGroupPageState extends State<LiveGroupPage> {
 
       _markers[MarkerId(_group.code)] = destMarker;
     }
-
-    //setState(() {});
   }
 
   void _updateLocation(Position position) {
     var destLatitude = _group.latitude;
     var destLongitude = _group.longitude;
-    /*
-    var destLatLng = LatLng(destLatitude, destLongitude);
-    */
+
     var currentTime = DateTime.now().millisecondsSinceEpoch;
     double currentLatitude = position.latitude;
     double currentLongitude = position.longitude;
@@ -315,12 +318,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
     currPosition.currentTime = currentTime;
     currPosition.currentLatitude = currentLatitude;
     currPosition.currentLongitude = currentLongitude;
-    /*
-    _queryGroups.doc(_group.code).collection('members')
-        .doc(_userId).snapshots().listen((userLocation) {
 
-    });
-    */
     _queryLives.doc(_group.code).collection(kMembers)
         .doc(_userId).collection(kRecords).get().then((records){
       var size = records.size;
@@ -384,6 +382,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
           _updatePosition();
         });
       });
+      _curPosition = position;
     });
   }
 
@@ -440,6 +439,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
       var vs = 0.15;
 
       int memberCount = memberDistances.length;
+
       if (memberCount > 0){
 
         var headerId = memberDistances[0].id;
@@ -451,23 +451,24 @@ class LiveGroupPageState extends State<LiveGroupPage> {
           var memberLat = member.currentLatitude;
           var memberLon = member.currentLongitude;
 
-          double frontDistance = memberDistances[0].distanceDestination / 1000;
-          double backDistance = 0;
-          double currDistance = memberDistances[i].distanceDestination / 1000;
-          double currSpeed = memberDistances[i].speed;
+          double backDistance = 0.0;
           double currRangeFront = 0.0;
           double currRangeBack = 0.0;
-          double safeSpeed = currSpeed * vd * memberCount;
-          double safeRange = currSpeed * vs;
+          var division = 1000;
+          double frontDistance = memberDistances[0].distanceDestination / division;
+          double currDistance = memberDistances[i].distanceDestination / division;
+          double currSpeed = (memberDistances[i].speed * 1000).ceilToDouble();
+          double safeRange = (1000 * (currSpeed / 1000).ceilToDouble() * vd * memberCount).ceilToDouble();
+          double safeSpeed = (1000 * (currSpeed / 1000).ceilToDouble() * vs).ceilToDouble();
 
           if (i > 0){
-            frontDistance = memberDistances[i - 1].distanceDestination / 1000;
-            currRangeFront = currDistance - frontDistance;
+            frontDistance = memberDistances[i - 1].distanceDestination / division;
+            currRangeFront = ((currDistance - frontDistance) * division).ceilToDouble();
           }
 
           if (i < (memberCount - 1)){
-            backDistance = memberDistances[i + 1].distanceDestination / 1000;
-            currRangeBack = backDistance - currDistance;
+            backDistance = memberDistances[i + 1].distanceDestination / division;
+            currRangeBack = ((backDistance - currDistance) * division).ceilToDouble();
           }
 
           double lastLatitude = memberDistances[0].lastLatitude;
@@ -475,16 +476,19 @@ class LiveGroupPageState extends State<LiveGroupPage> {
           double currentLatitude = memberDistances[0].currentLatitude;
           double currentLongitude = memberDistances[0].currentLongitude;
 
-          print("index: $i, currRangeFront: $currRangeFront,"
-              " currRangeBack: $currRangeBack,"
-              " safeSpeed: $safeSpeed, safeRange: $safeRange"
-          );
-
           var distanceMove = Geolocator.distanceBetween(
               lastLatitude, lastLongitude,
               currentLatitude, currentLongitude);
 
           if (distanceMove > 0){
+            /*
+            print("index: $i, currRangeFront: $currRangeFront,"
+                " currRangeBack: $currRangeBack,"
+                " currSpeed: $currSpeed,"
+                " safeSpeed: $safeSpeed, safeRange: $safeRange"
+                " member: $memberCount"
+            );
+            */
             setState(() {
               _selectedHeader = memberDistances[0];
 
@@ -504,46 +508,94 @@ class LiveGroupPageState extends State<LiveGroupPage> {
                 _markers[MarkerId(currId)] = headerMarker;
               }
 
-              if (headerId == _userId){
-                if (currRangeBack > safeSpeed){
-                  print("Kurangi Kecepatan");
-                  var newVoiceText = 'Mohon kurangi kecepatan. '
-                      'Anda melampaui sejauh ${(currRangeBack * 1000).ceil()} meter.'
-                      'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
-                  _speak(newVoiceText);
-                }
-              } else if (currId == _userId){
-                if (i > 0){
-                  //Peringatan tertinggal
-                  if (currRangeFront > safeRange){
-                    print("Tambah Kecepatan");
-                    var newVoiceText = 'Mohon tambah kecepatan. '
-                        'Anda tertinggal sejauh ${(currRangeFront * 1000).ceil()} meter.'
-                        'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
+              if ((currSpeed / 1000).ceil() > 0){
+                if (headerId == _userId){
+                  if (currRangeBack > safeSpeed){
+                    print("Kurangi Kecepatan");
+                    print("index: $i, currRangeFront: $currRangeFront,"
+                        " currRangeBack: $currRangeBack,"
+                        " currSpeed: $currSpeed,"
+                        " safeSpeed: $safeSpeed, safeRange: $safeRange"
+                        " member: $memberCount"
+                    );
+                    var newVoiceText = 'Mohon kurangi kecepatan. '
+                        'Anda melampaui sejauh ${(currRangeBack).toInt()} meter.'
+                        'Kecepatan Anda saat ini ${(currSpeed / 1000).ceil()} Kilometer per Jam';
                     _speak(newVoiceText);
                   }
-                  if (currRangeFront > safeSpeed){
-                    print("Tambah Kecepatan");
-                    var newVoiceText = 'Mohon tambah kecepatan. '
-                        'Anda tertinggal sejauh ${(currRangeFront * 1000).ceil()} meter.'
-                        'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
+                  if (currRangeBack > safeRange){
+                    print("Kurangi Kecepatan");
+                    print("index: $i, currRangeFront: $currRangeFront,"
+                        " currRangeBack: $currRangeBack,"
+                        " currSpeed: $currSpeed,"
+                        " safeSpeed: $safeSpeed, safeRange: $safeRange"
+                        " member: $memberCount"
+                    );
+                    var newVoiceText = 'Mohon kurangi kecepatan. '
+                        'Anda melampaui sejauh ${(currRangeBack).toInt()} meter.'
+                        'Kecepatan Anda saat ini ${(currSpeed / 1000).ceil()} Kilometer per Jam';
                     _speak(newVoiceText);
                   }
                 } else {
-                  //Peringatan kurangi kecepatan
-                  if (currRangeBack > safeRange){
-                    print("Kurangi Kecepatan");
-                    var newVoiceText = 'Mohon kurangi kecepatan. '
-                        'Anda melampaui sejauh ${(currRangeBack * 1000).ceil()} meter.'
-                        'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
-                    _speak(newVoiceText);
-                  }
-                  if (currRangeBack > safeSpeed){
-                    print("Kurangi Kecepatan");
-                    var newVoiceText = 'Mohon kurangi kecepatan. '
-                        'Anda melampaui sejauh ${(currRangeBack * 1000).ceil()} meter.'
-                        'Kecepatan Anda saat ini ${currSpeed.ceil()} Kilometer per Jam';
-                    _speak(newVoiceText);
+                  if (currId == _userId) {
+                    if (i > 0) {
+                      //Peringatan tertinggal
+                      if (currRangeFront > safeRange) {
+                        print("Tambah Kecepatan");
+                        print("index: $i, currRangeFront: $currRangeFront,"
+                            " currRangeBack: $currRangeBack,"
+                            " currSpeed: $currSpeed,"
+                            " safeSpeed: $safeSpeed, safeRange: $safeRange"
+                            " member: $memberCount"
+                        );
+                        var newVoiceText = 'Mohon tambah kecepatan. '
+                            'Anda tertinggal sejauh ${(currRangeFront).toInt()} meter.'
+                            'Kecepatan Anda saat ini ${(currSpeed / 1000).ceil()} Kilometer per Jam';
+                        _speak(newVoiceText);
+                      }
+                      if (currRangeFront > safeSpeed) {
+                        print("Tambah Kecepatan");
+                        print("index: $i, currRangeFront: $currRangeFront,"
+                            " currRangeBack: $currRangeBack,"
+                            " currSpeed: $currSpeed,"
+                            " safeSpeed: $safeSpeed, safeRange: $safeRange"
+                            " member: $memberCount"
+                        );
+                        var newVoiceText = 'Mohon tambah kecepatan. '
+                            'Anda tertinggal sejauh ${(currRangeFront).toInt()} meter.'
+                            'Kecepatan Anda saat ini ${(currSpeed / 1000).ceil()} Kilometer per Jam';
+                        _speak(newVoiceText);
+                      }
+                    } else {
+                      //Peringatan kurangi kecepatan
+                      if (currRangeBack > safeRange) {
+                        print("Kurangi Kecepatan");
+                        print("index: $i, currRangeFront: $currRangeFront,"
+                            " currRangeBack: $currRangeBack,"
+                            " currSpeed: $currSpeed,"
+                            " safeSpeed: $safeSpeed, safeRange: $safeRange"
+                            " member: $memberCount"
+                        );
+                        var newVoiceText = 'Mohon kurangi kecepatan. '
+                            'Anda melampaui sejauh ${(currRangeBack).toInt()} meter.'
+                            'Kecepatan Anda saat ini ${(currSpeed / 1000).ceil()} Kilometer per Jam';
+                        _speak(newVoiceText);
+                      }
+                      if (currRangeBack > safeSpeed) {
+                        print("Kurangi Kecepatan");
+                        print("index: $i, currRangeFront: $currRangeFront,"
+                            " currRangeBack: $currRangeBack,"
+                            " currSpeed: $currSpeed,"
+                            " safeSpeed: $safeSpeed, safeRange: $safeRange"
+                            " member: $memberCount"
+                        );
+                        var newVoiceText = 'Mohon kurangi kecepatan. '
+                            'Anda melampaui sejauh ${(currRangeBack).toInt()} meter.'
+                            'Kecepatan Anda saat ini ${(currSpeed / 1000)
+                            .ceil()} Kilometer per Jam';
+                        _speak(newVoiceText);
+                      }
+                    }
                   }
                 }
               }
@@ -606,25 +658,16 @@ class LiveGroupPageState extends State<LiveGroupPage> {
       if (_newVoiceText.isNotEmpty) {
         await flutterTts.awaitSpeakCompletion(true);
         await flutterTts.speak(_newVoiceText);
+        _isSpeak = false;
       }
     }
   }
-  /*
-  Future _stop() async {
-    var result = await flutterTts.stop();
-  }
-  Future _pause() async {
-    var result = await flutterTts.pause();
-  }
-  */
+
   void _initTts() {
     flutterTts = FlutterTts();
 
     _getLanguages();
-
-    //if (isAndroid) {
     _getEngines();
-    //}
 
     flutterTts.setStartHandler(() {
       setState(() {
@@ -643,30 +686,309 @@ class LiveGroupPageState extends State<LiveGroupPage> {
         print("Cancel");
       });
     });
-/*
-
-    if (isWeb || isIOS) {
-      flutterTts.setPauseHandler(() {
-        setState(() {
-          print("Paused");
-          ttsState = TtsState.paused;
-        });
-      });
-
-      flutterTts.setContinueHandler(() {
-        setState(() {
-          print("Continued");
-          ttsState = TtsState.continued;
-        });
-      });
-    }
-*/
 
     flutterTts.setErrorHandler((msg) {
       setState(() {
         print('error: $msg');
       });
     });
+  }
+
+  void _listenBroadcast(BuildContext context, Position position){
+    _queryLives.doc(_group.code)
+        .collection(kBroadcasts)
+        .snapshots()
+        .listen((_snapshotBroadcast) {
+      for (var i = 0; i < _snapshotBroadcast.docs.length; i++){
+        var element = _snapshotBroadcast.docs[i];
+        var id = element.id;
+        BroadcastVO broadcast = BroadcastVO.fromJson(element.data());
+        if (broadcast.id != _userId){
+          _queryLives.doc(_group.code)
+              .collection(kBroadcasts)
+              .doc(id)
+              .collection(kReads)
+              .doc(_userId).get().then((read){
+            if (!read.exists){
+              if (broadcast.message.isNotEmpty){
+                if (!_isSpeak){
+                  _speak(broadcast.message);
+                  _showBroadcastAlert(context, id, broadcast, position);
+                }
+              }
+            }
+          });
+        }
+      }
+    });
+  }
+
+  void _sendBroadcast(context, message){
+    if (_curPosition != null){
+      BroadcastVO broadcast = new BroadcastVO();
+      broadcast.id = _userLogin.uid;
+      broadcast.name = _userLogin.name;
+      broadcast.latitude = _curPosition.latitude;
+      broadcast.longitude = _curPosition.longitude;
+      broadcast.message = message;
+      broadcast.created = DateTime.now().millisecondsSinceEpoch;
+
+      _queryLives.doc(_group.code)
+          .collection(kBroadcasts)
+          .add(broadcast.toJson())
+          .then((value){
+        Toast.show("Broadcast terkirim",
+          context,
+          duration: Toast.LENGTH_LONG,
+          gravity: Toast.BOTTOM,
+        );
+      });
+    }
+  }
+
+  void _showBroadcastDialog(BuildContext context) {
+    // set up the list options
+    Widget optionOne = SimpleDialogOption(
+      child: Text(kMessage1,
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 18.0,
+        ),
+      ),
+      padding: EdgeInsets.all(16.0),
+      onPressed: () {
+        _sendBroadcast(context, kMessage1);
+        Navigator.of(context).pop();
+      },
+    );
+    Widget optionTwo = SimpleDialogOption(
+      child: Text(kMessage2,
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 18.0,
+        ),
+      ),
+      padding: EdgeInsets.all(16.0),
+      onPressed: () {
+        _sendBroadcast(context, kMessage2);
+        Navigator.of(context).pop();
+      },
+    );
+    Widget optionThree = SimpleDialogOption(
+      child: Text(kMessage3,
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 18.0,
+        ),
+      ),
+      padding: EdgeInsets.all(16.0),
+      onPressed: () {
+        _sendBroadcast(context, kMessage3);
+        Navigator.of(context).pop();
+      },
+    );
+    Widget optionFour = SimpleDialogOption(
+      child: Text(kMessage4,
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 18.0,
+        ),
+      ),
+      padding: EdgeInsets.all(16.0),
+      onPressed: () {
+        _sendBroadcast(context, kMessage4);
+        Navigator.of(context).pop();
+      },
+    );
+    // set up the SimpleDialog
+    SimpleDialog dialog = SimpleDialog(
+      title: Text(kMessage0,
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 18.0,
+        ),
+      ),
+      children: <Widget>[
+        optionOne,
+        optionTwo,
+        optionThree,
+        optionFour,
+        MaterialButton(
+          child: Text('Batal'),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+      ],
+    );
+
+    // show the dialog
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return dialog;
+      },
+    );
+  }
+
+  void _showBroadcastAlert(BuildContext context, String id, BroadcastVO broadcast, Position position) {
+    if (position != null){
+      if (broadcast.message.isNotEmpty){
+        var destLatitude = broadcast.latitude;
+        var destLongitude = broadcast.longitude;
+        var currentLatitude = position.latitude;
+        var currentLongitude = position.longitude;
+        var message = broadcast.message;
+
+        var distanceDest = Geolocator.distanceBetween(
+            destLatitude, destLongitude,
+            currentLatitude, currentLongitude);
+        showDialog(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: Text('Perhatian'),
+              content: Container(
+                height: 150.0,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(message,
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 20.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 10.0,),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Pengirim',
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                ),
+                              ),
+                              SizedBox(height: 5.0,),
+                              Text(
+                                'Latitude',
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                ),
+                              ),
+                              SizedBox(height: 5.0,),
+                              Text(
+                                'Longitude',
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                ),
+                              ),
+                              SizedBox(height: 5.0,),
+                              Text(
+                                'Jarak',
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                ),
+                              ),
+                              SizedBox(height: 5.0,),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 10.0,),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                broadcast.name,
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 5.0,),
+                              Text(
+                                broadcast.latitude.toString(),
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                ),
+                              ),
+                              SizedBox(height: 5.0,),
+                              Text(
+                                broadcast.longitude.toString(),
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                ),
+                              ),
+                              SizedBox(height: 5.0,),
+                              Text('${distanceDest.ceil().toString()} meter',
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                ),
+                              ),
+                              SizedBox(height: 5.0,),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                MaterialButton(
+                  child: Text('Tutup'),
+                  onPressed: () {
+                    _queryLives.doc(_group.code)
+                        .collection(kBroadcasts)
+                        .doc(id)
+                        .collection(kReads)
+                        .doc(_userId).get().then((value){
+                          if (!value.exists){
+                            _queryLives.doc(_group.code)
+                                .collection(kBroadcasts)
+                                .doc(id)
+                                .collection(kReads)
+                                .doc(_userId).set(
+                                  {'read': DateTime.now().millisecondsSinceEpoch}
+                                );
+                          }
+                    });
+
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      }
+    }
   }
 
   @override
@@ -710,6 +1032,7 @@ class LiveGroupPageState extends State<LiveGroupPage> {
       ),
       floating: true,
       pinned: true,
+      actions: _actionList,
     );
 
     Widget _map = SliverToBoxAdapter(
